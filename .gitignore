@@ -39,3 +39,25 @@
 
 # debug information files
 *.dwo
+
+# Build directories
+build/
+cmake-build-*/
+
+# Data and results
+data/
+results/
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
+*.7z
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

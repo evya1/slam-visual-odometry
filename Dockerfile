@@ -1,27 +1,37 @@
-FROM ubuntu:22.04
+FROM debian:bookworm-slim
 
-# Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
-
-# Install basic dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install OpenCV dependencies (placeholder for future use)
-RUN apt-get update && apt-get install -y \
-    libopencv-dev \
-    libeigen3-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /workspace
 
-# Copy project files
-COPY . /workspace
+# Toolchain + OpenCV/Eigen + OpenGL/X11 deps (needed for Pangolin GUI)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git pkg-config ninja-build \
+    ca-certificates \
+    libopencv-dev libopencv-contrib-dev \
+    libeigen3-dev \
+    libgl1-mesa-dev libglu1-mesa-dev libglew-dev \
+    libx11-dev libxi-dev libxrandr-dev libxinerama-dev libxcursor-dev libxxf86vm-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# Default command
-CMD ["/bin/bash"]
+# Pangolin (optionally pin via PANGOLIN_COMMIT later)
+ARG PANGOLIN_COMMIT=master
+RUN git clone --recursive https://github.com/stevenlovegrove/Pangolin.git /opt/Pangolin \
+ && cd /opt/Pangolin \
+ && git checkout "${PANGOLIN_COMMIT}" \
+ && git submodule update --init --recursive \
+ && cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build build \
+ && cmake --install build \
+ && ldconfig
+
+# Expected mount points: dataset in /workspace/data, outputs in /workspace/results
+RUN mkdir -p /workspace/data /workspace/results
+
+# Better Docker caching: configure before copying full source
+COPY CMakeLists.txt /workspace/
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+COPY . /workspace
+RUN cmake --build build
+
+CMD ["bash"]

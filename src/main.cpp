@@ -237,7 +237,7 @@ public:
 
                 // Update rotation & translation
                 frame.pose.R    = R_prev * R;
-                frame.pose.t_vec = t_prev + scale * R_prev * t;
+                frame.pose.t_vec = t_prev + scale * R * t;
 
                 // Store position for trajectory
                 {
@@ -278,7 +278,11 @@ public:
 
         s_cam = pangolin::OpenGlRenderState(
             pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
-            pangolin::ModelViewLookAt(0, -5, -10, 0, 0, 0, pangolin::AxisNegY)
+            pangolin::ModelViewLookAt(
+                0, -1.5, -3.0,          // closer eye position
+                0, 0.0, 0.0,          // look at origin
+                pangolin::AxisNegY
+            )
         );
 
         d_cam = &pangolin::CreateDisplay()
@@ -294,7 +298,34 @@ public:
 
     void render_step(const std::vector<cv::Mat>& trajectory) {
         init();
+        // Center the initial view on the current trajectory (run once)
+        if (!home_set && !trajectory.empty()) {
+            const auto& p = trajectory.back();
+            const double cx = p.at<double>(0);
+            const double cy = p.at<double>(1);
+            const double cz = p.at<double>(2);
 
+            const double yaw_deg = 45.0;
+            const double yaw = yaw_deg * M_PI / 180.0;
+
+            // original offset from target
+            const double dx = 0.0;
+            const double dy = -1.5;
+            const double dz = -3.0;
+
+            // yaw rotation around vertical axis (rotate in x-z)
+            const double dx_rot = dx * std::cos(yaw) + dz * std::sin(yaw);
+            const double dz_rot = -dx * std::sin(yaw) + dz * std::cos(yaw);
+
+            s_cam.SetModelViewMatrix(
+                pangolin::ModelViewLookAt(
+                    cx + dx_rot, cy + dy, cz + dz_rot,      // eye
+                    cx,          cy,      cz,            // target
+                    pangolin::AxisNegY
+                )
+            );
+            home_set = true;
+        }
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
@@ -329,6 +360,7 @@ public:
 
 private:
     bool initialized = false;
+    bool home_set = false;
     pangolin::OpenGlRenderState s_cam;
     pangolin::View* d_cam = nullptr;
 

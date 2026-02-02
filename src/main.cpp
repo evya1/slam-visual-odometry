@@ -270,153 +270,78 @@ public:
 // Trajectory Viewer Class (Pangolin-based)
 // =============================================================================
 class TrajectoryViewer {
-private:
-    std::thread viewer_thread;
-    std::mutex data_mutex;
-    std::vector<cv::Mat> trajectory;
-    bool should_stop;
-    bool running;
-
 public:
-    TrajectoryViewer() : should_stop(false), running(false) {}
+    void init() {
+        if (initialized) return;
 
-    ~TrajectoryViewer() {
-        stop();
-    }
-
-    void start() {
-        running = true;
-        viewer_thread = std::thread(&TrajectoryViewer::run, this);
-    }
-
-    void stop() {
-        should_stop = true;
-        if (viewer_thread.joinable()) {
-            viewer_thread.join();
-        }
-        running = false;
-    }
-
-    void update_trajectory(const std::vector<cv::Mat>& new_trajectory) {
-        std::lock_guard<std::mutex> lock(data_mutex);
-        trajectory = new_trajectory;
-    }
-
-    bool is_running() const {
-        return running && !should_stop;
-    }
-
-private:
-    void run() {
-        // Create Pangolin window
         pangolin::CreateWindowAndBind("Visual Odometry: Trajectory", 1024, 768);
 
-        // Enable depth testing
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        // Define camera render state
-        // Looking at origin, camera positioned to see XZ plane (trajectory plane)
-        pangolin::OpenGlRenderState s_cam(
+        s_cam = pangolin::OpenGlRenderState(
             pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
             pangolin::ModelViewLookAt(0, -5, -10, 0, 0, 0, pangolin::AxisNegY)
         );
 
-        // Create interactive view
-        pangolin::View& d_cam = pangolin::CreateDisplay()
-            .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
-            .SetHandler(new pangolin::Handler3D(s_cam));
+        d_cam = &pangolin::CreateDisplay()
+                    .SetBounds(0.0, 1.0, 0.0, 1.0, -1024.0f / 768.0f)
+                    .SetHandler(new pangolin::Handler3D(s_cam));
 
-        while (!pangolin::ShouldQuit() && !should_stop) {
-            // Clear buffers
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        initialized = true;
+    }
 
-            d_cam.Activate(s_cam);
+    bool should_quit() const {
+        return pangolin::ShouldQuit();
+    }
 
-            // Draw coordinate axes at origin
-            draw_axes(0.5);
+    void render_step(const std::vector<cv::Mat>& trajectory) {
+        init();
 
-            // Draw grid on XZ plane
-            draw_grid();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
-            // Get current trajectory
-            std::vector<cv::Mat> current_trajectory;
-            {
-                std::lock_guard<std::mutex> lock(data_mutex);
-                current_trajectory = trajectory;
+        d_cam->Activate(s_cam);
+
+        draw_axes(0.5f);
+        draw_grid();
+
+        if (trajectory.size() > 1) {
+            glColor3f(0.0f, 1.0f, 0.0f);
+            glLineWidth(2.0f);
+            glBegin(GL_LINE_STRIP);
+            for (const auto& pos : trajectory) {
+                glVertex3d(pos.at<double>(0), pos.at<double>(1), pos.at<double>(2));
             }
+            glEnd();
 
-            // Draw trajectory
-            if (current_trajectory.size() > 1) {
-                // Draw trajectory line
-                glColor3f(0.0f, 1.0f, 0.0f);  // Green
-                glLineWidth(2.0f);
-                glBegin(GL_LINE_STRIP);
-                for (const auto& pos : current_trajectory) {
-                    double x = pos.at<double>(0);
-                    double y = pos.at<double>(1);
-                    double z = pos.at<double>(2);
-                    glVertex3d(x, y, z);
-                }
-                glEnd();
-
-                // Draw points at each position
-                glPointSize(5.0f);
-                glBegin(GL_POINTS);
-                for (size_t i = 0; i < current_trajectory.size(); ++i) {
-                    const auto& pos = current_trajectory[i];
-                    double x = pos.at<double>(0);
-                    double y = pos.at<double>(1);
-                    double z = pos.at<double>(2);
-
-                    if (i == 0) {
-                        glColor3f(1.0f, 0.0f, 0.0f);  // Red for start
-                    } else if (i == current_trajectory.size() - 1) {
-                        glColor3f(0.0f, 0.0f, 1.0f);  // Blue for current
-                    } else {
-                        glColor3f(0.0f, 1.0f, 0.0f);  // Green for intermediate
-                    }
-                    glVertex3d(x, y, z);
-                }
-                glEnd();
-
-                // Draw camera frustum at current position
-                if (!current_trajectory.empty()) {
-                    const auto& pos = current_trajectory.back();
-                    draw_camera_frustum(pos.at<double>(0), pos.at<double>(1), pos.at<double>(2));
-                }
+            glPointSize(5.0f);
+            glBegin(GL_POINTS);
+            for (size_t i = 0; i < trajectory.size(); ++i) {
+                const auto& pos = trajectory[i];
+                if (i == 0) glColor3f(1.0f, 0.0f, 0.0f);
+                else if (i == trajectory.size() - 1) glColor3f(0.0f, 0.0f, 1.0f);
+                else glColor3f(0.0f, 1.0f, 0.0f);
+                glVertex3d(pos.at<double>(0), pos.at<double>(1), pos.at<double>(2));
             }
-
-            pangolin::FinishFrame();
-
-            // Small delay to prevent excessive CPU usage
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            glEnd();
         }
 
-        pangolin::DestroyWindow("Visual Odometry: Trajectory");
+        pangolin::FinishFrame(); // processes events too
     }
+
+private:
+    bool initialized = false;
+    pangolin::OpenGlRenderState s_cam;
+    pangolin::View* d_cam = nullptr;
 
     void draw_axes(float length) {
         glLineWidth(2.0f);
         glBegin(GL_LINES);
-
-        // X axis - Red
-        glColor3f(1.0f, 0.0f, 0.0f);
-        glVertex3f(0, 0, 0);
-        glVertex3f(length, 0, 0);
-
-        // Y axis - Green
-        glColor3f(0.0f, 1.0f, 0.0f);
-        glVertex3f(0, 0, 0);
-        glVertex3f(0, length, 0);
-
-        // Z axis - Blue
-        glColor3f(0.0f, 0.0f, 1.0f);
-        glVertex3f(0, 0, 0);
-        glVertex3f(0, 0, length);
-
+        glColor3f(1.0f, 0.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(length, 0, 0);
+        glColor3f(0.0f, 1.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(0, length, 0);
+        glColor3f(0.0f, 0.0f, 1.0f); glVertex3f(0, 0, 0); glVertex3f(0, 0, length);
         glEnd();
     }
 
@@ -424,63 +349,15 @@ private:
         glColor3f(0.3f, 0.3f, 0.3f);
         glLineWidth(1.0f);
         glBegin(GL_LINES);
-
         float grid_size = 10.0f;
         float step = 1.0f;
-
         for (float i = -grid_size; i <= grid_size; i += step) {
-            // Lines parallel to X axis
-            glVertex3f(-grid_size, 0, i);
-            glVertex3f(grid_size, 0, i);
-
-            // Lines parallel to Z axis
-            glVertex3f(i, 0, -grid_size);
-            glVertex3f(i, 0, grid_size);
+            glVertex3f(-grid_size, 0, i); glVertex3f(grid_size, 0, i);
+            glVertex3f(i, 0, -grid_size); glVertex3f(i, 0, grid_size);
         }
-
-        glEnd();
-    }
-
-    void draw_camera_frustum(double x, double y, double z) {
-        float size = 0.1f;
-
-        glColor3f(0.0f, 0.5f, 1.0f);  // Light blue
-        glLineWidth(2.0f);
-        glBegin(GL_LINES);
-
-        // Camera pyramid
-        float fx = x, fy = y, fz = z;
-
-        // Front face (towards +Z in camera convention)
-        glVertex3f(fx, fy, fz);
-        glVertex3f(fx - size, fy - size, fz + size * 2);
-
-        glVertex3f(fx, fy, fz);
-        glVertex3f(fx + size, fy - size, fz + size * 2);
-
-        glVertex3f(fx, fy, fz);
-        glVertex3f(fx + size, fy + size, fz + size * 2);
-
-        glVertex3f(fx, fy, fz);
-        glVertex3f(fx - size, fy + size, fz + size * 2);
-
-        // Base rectangle
-        glVertex3f(fx - size, fy - size, fz + size * 2);
-        glVertex3f(fx + size, fy - size, fz + size * 2);
-
-        glVertex3f(fx + size, fy - size, fz + size * 2);
-        glVertex3f(fx + size, fy + size, fz + size * 2);
-
-        glVertex3f(fx + size, fy + size, fz + size * 2);
-        glVertex3f(fx - size, fy + size, fz + size * 2);
-
-        glVertex3f(fx - size, fy + size, fz + size * 2);
-        glVertex3f(fx - size, fy - size, fz + size * 2);
-
         glEnd();
     }
 };
-
 // =============================================================================
 // Utility Functions
 // =============================================================================
@@ -519,11 +396,35 @@ int main(int argc, char** argv) {
     std::cout << "  Epipolar Visual Odometry - NAV HW2   " << std::endl;
     std::cout << "========================================" << std::endl;
 
-    // Dataset path
-    std::string dataset_path = "NAV_HW2/Dataset_VO";
+    // Dataset path: prefer CLI arg, otherwise auto-detect common locations.
+    std::string dataset_path;
 
     if (argc > 1) {
         dataset_path = argv[1];
+    } else {
+        const std::vector<std::string> candidates = {
+            "data/Dataset_VO",
+            "Dataset_VO"
+        };
+
+        for (const auto& c : candidates) {
+            if (std::filesystem::exists(c) && std::filesystem::is_directory(c)) {
+                dataset_path = c;
+                break;
+            }
+        }
+    }
+
+    if (dataset_path.empty()) {
+        std::cerr
+            << "Dataset directory not found.\n"
+            << "Expected one of:\n"
+            << "  - data/Dataset_VO (recommended)\n"
+            << "  - Dataset_VO\n\n"
+            << "Run with an explicit path, e.g.:\n"
+            << "  ./build/slam_vo_run data/Dataset_VO\n"
+            << "  ./build/slam_vo_run /workspace/data/Dataset_VO   (inside Docker)\n";
+        return -1;
     }
 
     std::cout << "Dataset path: " << dataset_path << std::endl;
@@ -552,7 +453,8 @@ int main(int argc, char** argv) {
 
     // Start trajectory viewer in separate thread
     TrajectoryViewer viewer;
-    viewer.start();
+    viewer.init();
+
 
     // Create window for keypoints display
     cv::namedWindow("Visual Odometry: Keypoints", cv::WINDOW_AUTOSIZE);
@@ -566,7 +468,7 @@ int main(int argc, char** argv) {
 
     for (size_t i = 0; i < image_paths.size(); ++i) {
         // Check if viewer is still running
-        if (!viewer.is_running()) {
+        if (viewer.should_quit()) {
             std::cout << "Viewer closed, stopping..." << std::endl;
             break;
         }
@@ -594,7 +496,7 @@ int main(int argc, char** argv) {
         cv::Mat display_image = vo.process_frame(frame);
 
         // Update trajectory viewer
-        viewer.update_trajectory(vo.get_trajectory());
+        viewer.render_step(vo.get_trajectory());
 
         // Display keypoints image
         cv::imshow("Visual Odometry: Keypoints", display_image);
@@ -605,7 +507,6 @@ int main(int argc, char** argv) {
 
             if (key == 'q' || key == 'Q' || key == 27) {  // q, Q, or ESC
                 std::cout << "\nQuitting..." << std::endl;
-                viewer.stop();
                 cv::destroyAllWindows();
                 return 0;
             }
@@ -638,7 +539,6 @@ int main(int argc, char** argv) {
 
     cv::waitKey(0);
 
-    viewer.stop();
     cv::destroyAllWindows();
 
     return 0;

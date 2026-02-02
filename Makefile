@@ -38,18 +38,16 @@ docker-build:
 
 docker-shell:
 	docker run -it --rm \
-	  --entrypoint bash \
 	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
-	  $(IMAGE)
+	  $(IMAGE) bash
 
 docker-run:
 	@mkdir -p data results
 	docker run -it --rm \
-	  --entrypoint bash \
 	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
 	  -v "$(PWD)/data":$(WORKDIR)/data \
 	  -v "$(PWD)/results":$(WORKDIR)/results \
-	  $(IMAGE)
+	  $(IMAGE) bash
 
 docker-run-gui:
 	@mkdir -p data results

@@ -6,7 +6,7 @@ GENERATOR  ?= Ninja
 BUILD_TYPE ?= RelWithDebInfo
 
 # ---- Helpers ----
-.PHONY: help build configure test clean docker-build docker-shell docker-run
+.PHONY: help build configure test clean docker-build docker-shell docker-run docker-run-gui
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,7 @@ help:
 	@echo "  docker-build  Build Docker image $(IMAGE)"
 	@echo "  docker-shell  Open an interactive shell in the container"
 	@echo "  docker-run    Run container with ./data and ./results mounted"
+	@echo "  docker-run-gui Run container with noVNC (http://localhost:6080/vnc.html)"
 
 # ---- Local build ----
 configure:

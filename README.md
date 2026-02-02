@@ -6,46 +6,37 @@ Monocular visual odometry in C++ (OpenCV, Eigen, Pangolin) for a SLAM course - f
 
 ### Prerequisites
 
-- CMake 3.10 or higher
+- CMake 3.16+
 - C++17 compatible compiler (GCC 7+, Clang 5+)
+- Ninja (recommended)
 - Docker (optional)
 
-### Building
+### Make Targets
 
 ```bash
-# Build using Makefile
 make build
-
-# Or manually with CMake
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-```
-
-### Running Tests
-
-```bash
 make test
-```
-
-### Docker
-
-```bash
-# Build Docker image
-make docker-build
-
-# Open interactive shell
-make docker-shell
-
-# Run container with data mount
-make docker-run
-```
-
-### Clean
-
-```bash
 make clean
+make docker-build
+make docker-shell
+make docker-run
+make docker-run-gui
 ```
+
+### Manual Build (optional)
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build -j
+```
+
+### Docker Notes
+
+The `docker-run` and `docker-run-gui` targets mount `./data` and `./results` to `/workspace/data` and `/workspace/results` in the container.
+
+### GUI Workflow
+
+`make docker-run-gui` starts Xvfb + openbox + x11vnc + noVNC. Open http://localhost:6080/vnc.html in your browser; Pangolin/OpenCV windows appear in that VNC session.
 
 ## Directory Structure
 
@@ -62,25 +53,11 @@ make clean
 
 ## Dataset Notes
 
-Place your SLAM/VO datasets in the `data/` directory. This directory is ignored by git and mounted when using Docker.
+Place `Dataset_VO.tar` in `data/` (gitignored). When running in Docker, `data/` is mounted to `/workspace/data`.
 
-Supported dataset formats:
-- KITTI Odometry Dataset
-- TUM RGB-D Dataset
-- EuRoC MAV Dataset
-
-### Example Dataset Structure
-
-```
-data/
-├── kitti/
-│   ├── sequences/
-│   │   ├── 00/
-│   │   ├── 01/
-│   │   └── ...
-│   └── poses/
-└── tum/
-    └── rgbd_dataset_freiburg1_xyz/
+```bash
+mkdir -p data/sequence
+tar -xf data/Dataset_VO.tar -C data/sequence
 ```
 
 ## Development

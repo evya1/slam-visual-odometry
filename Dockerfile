@@ -53,5 +53,4 @@ exec \"$@\"\n\
 EOF\n\
  && chmod +x /usr/local/bin/start-novnc
 
-ENTRYPOINT ["/usr/local/bin/start-novnc"]
 CMD ["bash"]

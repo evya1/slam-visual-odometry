@@ -118,7 +118,9 @@ public:
     // Detect keypoints and compute descriptors for a frame
     void detect_features(Frame& frame) {
         cv::Mat gray;
-        if (frame.image.channels() == 3) {
+        int channels = frame.image.channels();
+
+        if (channels == 3) {
             cv::cvtColor(frame.image, gray, cv::COLOR_BGR2GRAY);
         } else {
             gray = frame.image;
@@ -456,8 +458,12 @@ int main(int argc, char** argv) {
     viewer.init();
 
 
-    // Create window for keypoints display
-    cv::namedWindow("Visual Odometry: Keypoints", cv::WINDOW_AUTOSIZE);
+    // Create OpenCV windows once
+    // cv::namedWindow("Visual Odometry: Frame", cv::WINDOW_NORMAL);
+    cv::namedWindow("Visual Odometry: Keypoints", cv::WINDOW_NORMAL);
+    // cv::moveWindow("Visual Odometry: Frame", 50, 50);
+    cv::moveWindow("Visual Odometry: Keypoints", 50, 500);
+    cv::waitKey(1); // optional: forces window creation
 
     std::cout << "\nProcessing " << image_paths.size() << " frames..." << std::endl;
     std::cout << "Press 'q' or ESC to quit, SPACE to pause/resume" << std::endl;
@@ -498,7 +504,8 @@ int main(int argc, char** argv) {
         // Update trajectory viewer
         viewer.render_step(vo.get_trajectory());
 
-        // Display keypoints image
+        // Display images
+        // cv::imshow("Visual Odometry: Frame", image);
         cv::imshow("Visual Odometry: Keypoints", display_image);
 
         // Handle keyboard input

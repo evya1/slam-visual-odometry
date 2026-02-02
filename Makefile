@@ -1,54 +1,62 @@
-# SLAM Visual Odometry - Makefile
+# ---- Config ----
+IMAGE      ?= slam-vo
+WORKDIR    ?= /workspace
+BUILD_DIR  ?= build
+GENERATOR  ?= Ninja
+BUILD_TYPE ?= RelWithDebInfo
 
-.PHONY: build test clean docker-build docker-shell docker-run help
+# ---- Helpers ----
+.PHONY: help build configure test clean docker-build docker-shell docker-run docker-run-gui
 
-# Default target
-all: build
-
-# Build the project
-build:
-	@echo "Building project..."
-	@mkdir -p build
-	@cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j$$(nproc)
-
-# Run tests
-test:
-	@echo "Running tests..."
-	@cd build && ctest --output-on-failure
-
-# Clean build artifacts
-clean:
-	@echo "Cleaning build artifacts..."
-	@rm -rf build/
-
-# Build Docker image
-docker-build:
-	@echo "Building Docker image..."
-	@docker build -t slam-vo:latest .
-
-# Open interactive shell in Docker container
-docker-shell:
-	@echo "Opening Docker shell..."
-	@docker run -it --rm \
-		-v $$(pwd):/workspace \
-		-v $$(pwd)/data:/workspace/data \
-		slam-vo:latest /bin/bash
-
-# Run Docker container with data mount
-docker-run:
-	@echo "Running Docker container..."
-	@docker run -it --rm \
-		-v $$(pwd):/workspace \
-		-v $$(pwd)/data:/workspace/data \
-		slam-vo:latest
-
-# Display help
 help:
-	@echo "SLAM Visual Odometry - Available targets:"
-	@echo "  make build         - Build the project"
-	@echo "  make test          - Run tests"
-	@echo "  make clean         - Clean build artifacts"
-	@echo "  make docker-build  - Build Docker image"
-	@echo "  make docker-shell  - Open interactive Docker shell"
-	@echo "  make docker-run    - Run Docker container with data mount"
-	@echo "  make help          - Display this help message"
+	@echo "Targets:"
+	@echo "  build         Configure + build locally"
+	@echo "  configure     Configure locally (no build)"
+	@echo "  test          Run tests (CTest) from $(BUILD_DIR)"
+	@echo "  clean         Remove build directory"
+	@echo "  docker-build  Build Docker image $(IMAGE)"
+	@echo "  docker-shell  Open an interactive shell in the container"
+	@echo "  docker-run    Run container with ./data and ./results mounted"
+	@echo "  docker-run-gui Run container with noVNC (http://localhost:6080/vnc.html)"
+
+# ---- Local build ----
+configure:
+	cmake -S . -B $(BUILD_DIR) -G "$(GENERATOR)" -DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
+
+build: configure
+	cmake --build $(BUILD_DIR) -j
+
+test:
+	ctest --test-dir $(BUILD_DIR) --output-on-failure
+
+clean:
+	rm -rf $(BUILD_DIR)
+
+# ---- Docker ----
+docker-build:
+	docker build -t $(IMAGE) .
+
+docker-shell:
+	docker run -it --rm \
+	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
+	  $(IMAGE) bash
+
+docker-run:
+	@mkdir -p data results
+	docker run -it --rm \
+	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
+	  -v "$(PWD)/data":$(WORKDIR)/data \
+	  -v "$(PWD)/results":$(WORKDIR)/results \
+	  $(IMAGE) bash
+
+docker-run-gui:
+	@mkdir -p data results
+	docker run -it --rm \
+	  --entrypoint /usr/local/bin/start-novnc \
+	  -p 6080:6080 \
+	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
+	  -v "$(PWD)/data":$(WORKDIR)/data \
+	  -v "$(PWD)/results":$(WORKDIR)/results \
+	  $(IMAGE) bash
+
+

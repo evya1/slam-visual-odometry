@@ -47,3 +47,13 @@ docker-run:
 	  -v "$(PWD)/data":$(WORKDIR)/data \
 	  -v "$(PWD)/results":$(WORKDIR)/results \
 	  $(IMAGE) bash
+
+docker-run-gui:
+	@mkdir -p data results
+	docker run -it --rm \
+	  -p 6080:6080 \
+	  -v "$(PWD)":$(WORKDIR) -w $(WORKDIR) \
+	  -v "$(PWD)/data":$(WORKDIR)/data \
+	  -v "$(PWD)/results":$(WORKDIR)/results \
+	  $(IMAGE) bash
+

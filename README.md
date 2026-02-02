@@ -6,46 +6,36 @@ Monocular visual odometry in C++ (OpenCV, Eigen, Pangolin) for a SLAM course - f
 
 ### Prerequisites
 
-- CMake 3.10 or higher
-- C++17 compatible compiler (GCC 7+, Clang 5+)
+- CMake 3.16+
+- C++17 compatible compiler
+- Ninja (recommended, used by the Makefile)
 - Docker (optional)
 
 ### Building
 
 ```bash
-# Build using Makefile
 make build
-
-# Or manually with CMake
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
 ```
 
-### Running Tests
+### Make Targets
 
 ```bash
+make build
 make test
-```
-
-### Docker
-
-```bash
-# Build Docker image
-make docker-build
-
-# Open interactive shell
-make docker-shell
-
-# Run container with data mount
-make docker-run
-```
-
-### Clean
-
-```bash
 make clean
+make docker-build
+make docker-shell
+make docker-run
+make docker-run-gui
 ```
+
+- `make build`: Configure + build locally.
+- `make test`: Run tests via CTest from `build/`.
+- `make clean`: Remove the `build/` directory.
+- `make docker-build`: Build the Docker image.
+- `make docker-shell`: Open an interactive container shell.
+- `make docker-run`: Run a container with `./data` and `./results` mounted to `/workspace`.
+- `make docker-run-gui`: Run with Xvfb + openbox + x11vnc + noVNC for GUI output.
 
 ## Directory Structure
 
@@ -60,27 +50,19 @@ make clean
 └── results/         # Output results (not tracked)
 ```
 
+## GUI Workflow (Docker)
+
+`make docker-run-gui` starts Xvfb + openbox + x11vnc + noVNC in the container. Open
+`http://localhost:6080/vnc.html` in a browser; Pangolin/OpenCV windows will appear there.
+
 ## Dataset Notes
 
-Place your SLAM/VO datasets in the `data/` directory. This directory is ignored by git and mounted when using Docker.
+Place `Dataset_VO.tar` in `data/` (gitignored). The directory is mounted to
+`/workspace/data` when using Docker.
 
-Supported dataset formats:
-- KITTI Odometry Dataset
-- TUM RGB-D Dataset
-- EuRoC MAV Dataset
-
-### Example Dataset Structure
-
-```
-data/
-├── kitti/
-│   ├── sequences/
-│   │   ├── 00/
-│   │   ├── 01/
-│   │   └── ...
-│   └── poses/
-└── tum/
-    └── rgbd_dataset_freiburg1_xyz/
+```bash
+mkdir -p data/sequence
+tar -xf data/Dataset_VO.tar -C data/sequence
 ```
 
 ## Development

@@ -53,7 +53,7 @@ The `docker-run` and `docker-run-gui` targets mount `./data` and `./results` to 
 
 ## Dataset Notes
 
-Place `Dataset_VO.tar` in `data/` (gitignored). When running in Docker, `data/` is mounted to `/workspace/data`.
+Place `Dataset_VO.tar` in `data/` (gitignored). When running in Docker, `data/` is mounted to `/workspace/data`. Extract the archive into a subfolder like `data/sequence/`.
 
 ```bash
 mkdir -p data/sequence

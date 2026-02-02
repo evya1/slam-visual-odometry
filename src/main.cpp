@@ -20,41 +20,36 @@
 #include <pangolin/pangolin.h>
 
 namespace fs = std::filesystem;
-// =============================================================================
-// Pose Class - Represents camera pose (rotation + translation)
-// =============================================================================
 class Pose {
 public:
-    cv::Mat rotation_matrix;     // 3x3 rotation matrix
-    cv::Mat translation_vector;  // 3x1 translation vector
+    cv::Mat R;     // R in SO(3)
+    cv::Mat t_vec;
 
     Pose() {
-        rotation_matrix = cv::Mat::eye(3, 3, CV_64F);
-        translation_vector = cv::Mat::zeros(3, 1, CV_64F);
+        R = cv::Mat::eye(3, 3, CV_64F);
+        t_vec = cv::Mat::zeros(3, 1, CV_64F);
     }
 
     Pose(const cv::Mat& r, const cv::Mat& t) {
-        rotation_matrix = r.clone();
-        translation_vector = t.clone();
+        R = r.clone();
+        t_vec = t.clone();
     }
 
-    // Get 4x4 transformation matrix
+    // getter and setter for transformation matrix (in SE(3))
     cv::Mat get_transformation_matrix() const {
         cv::Mat T = cv::Mat::eye(4, 4, CV_64F);
-        rotation_matrix.copyTo(T(cv::Rect(0, 0, 3, 3)));
-        translation_vector.copyTo(T(cv::Rect(3, 0, 1, 3)));
+        R.copyTo(T(cv::Rect(0, 0, 3, 3)));
+        t_vec.copyTo(T(cv::Rect(3, 0, 1, 3)));
         return T;
     }
 
-    // Set from 4x4 transformation matrix
     void set_from_transformation_matrix(const cv::Mat& T) {
-        T(cv::Rect(0, 0, 3, 3)).copyTo(rotation_matrix);
-        T(cv::Rect(3, 0, 1, 3)).copyTo(translation_vector);
+        T(cv::Rect(0, 0, 3, 3)).copyTo(R);
+        T(cv::Rect(3, 0, 1, 3)).copyTo(t_vec);
     }
 
-    // Get position (camera center in world coordinates)
     cv::Mat get_position() const {
-        return -rotation_matrix.t() * translation_vector;
+        return -R.t() * t_vec;
     }
 };
 
@@ -94,8 +89,9 @@ private:
 
 public:
     VisualOdometry(int image_width, int image_height) : initialized(false) {
+        const int nfeatures = 2000;
         // Initialize ORB detector with reasonable parameters
-        orb_detector = cv::ORB::create(2000, 1.2f, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 20);
+        orb_detector = cv::ORB::create(nfeatures, 1.2f, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 20);
 
         // Initialize brute-force matcher with Hamming distance for ORB
         matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
@@ -232,18 +228,16 @@ public:
             cv::Mat R, t;
             if (estimate_relative_pose(previous_frame, frame, matches, R, t)) {
                 // Accumulate pose: T_world_current = T_world_previous * T_previous_current
-                cv::Mat R_prev = previous_frame.pose.rotation_matrix;
-                cv::Mat t_prev = previous_frame.pose.translation_vector;
+                cv::Mat R_prev = previous_frame.pose.R;
+                cv::Mat t_prev = previous_frame.pose.t_vec;
 
                 // Scale factor (in real system, would come from additional sensors or prior knowledge)
                 // For this demo, use a fixed scale
                 double scale = 0.1;
 
-                // Update rotation: R_new = R_prev * R
-                frame.pose.rotation_matrix = R_prev * R;
-
-                // Update translation: t_new = t_prev + scale * R_prev * t
-                frame.pose.translation_vector = t_prev + scale * R_prev * t;
+                // Update rotation & translation
+                frame.pose.R    = R_prev * R;
+                frame.pose.t_vec = t_prev + scale * R_prev * t;
 
                 // Store position for trajectory
                 {
@@ -305,8 +299,8 @@ public:
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
         d_cam->Activate(s_cam);
-
-        draw_axes(0.5f);
+        const float axis_display_length = 1.0f;
+        draw_axes(axis_display_length);
         draw_grid();
 
         if (trajectory.size() > 1) {
@@ -338,12 +332,12 @@ private:
     pangolin::OpenGlRenderState s_cam;
     pangolin::View* d_cam = nullptr;
 
-    void draw_axes(float length) {
+    void draw_axes(const float axis_display_length) {
         glLineWidth(2.0f);
         glBegin(GL_LINES);
-        glColor3f(1.0f, 0.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(length, 0, 0);
-        glColor3f(0.0f, 1.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(0, length, 0);
-        glColor3f(0.0f, 0.0f, 1.0f); glVertex3f(0, 0, 0); glVertex3f(0, 0, length);
+        glColor3f(1.0f, 0.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(axis_display_length, 0, 0);  // +X (red)
+        glColor3f(0.0f, 1.0f, 0.0f); glVertex3f(0, 0, 0); glVertex3f(0, axis_display_length, 0);  // +Y (green)
+        glColor3f(0.0f, 0.0f, 1.0f); glVertex3f(0, 0, 0); glVertex3f(0, 0, axis_display_length);  // +Z (blue)
         glEnd();
     }
 

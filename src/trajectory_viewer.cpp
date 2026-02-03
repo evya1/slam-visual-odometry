@@ -16,9 +16,10 @@ void TrajectoryViewer::init() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    const float k = 0.1f; // 10% of the original distance (closer)
     s_cam_ = pangolin::OpenGlRenderState(
         pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
-        pangolin::ModelViewLookAt(0, -5, -10, 0, 0, 0, pangolin::AxisNegY)
+        pangolin::ModelViewLookAt(0, -5*k, -10*k, 0, 0, 0, pangolin::AxisNegY)
     );
 
     d_cam_ = &pangolin::CreateDisplay()

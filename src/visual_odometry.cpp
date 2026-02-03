@@ -89,6 +89,15 @@ bool VisualOdometry::estimate_relative_pose(
     points2.reserve(matches.size());
 
     for (const auto& m : matches) {
+        if (m.queryIdx < 0 ||
+            m.queryIdx >= static_cast<int>(frame1.keypoints.size()) ||
+            m.trainIdx < 0 ||
+            m.trainIdx >= static_cast<int>(frame2.keypoints.size())) {
+            std::cerr << "Skipping match with out-of-range indices: "
+                      << "queryIdx=" << m.queryIdx
+                      << ", trainIdx=" << m.trainIdx << "\n";
+            continue;
+        }
         points1.push_back(frame1.keypoints[m.queryIdx].pt);
         points2.push_back(frame2.keypoints[m.trainIdx].pt);
     }

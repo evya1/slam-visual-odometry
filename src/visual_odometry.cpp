@@ -147,6 +147,12 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
             const cv::Mat R_prev = previous_frame_.pose.R;
             const cv::Mat t_prev = previous_frame_.pose.t_vec;
 
+            // Scale factor:
+            //   In a monocular visual odometry system, absolute scale cannot be
+            //   recovered from images alone. In a real system, the scale would
+            //   come from additional sensors (e.g., IMU, wheel odometry, depth)
+            //   or prior knowledge about the scene/trajectory.
+            //   For this demo, use a fixed scale.
             const double scale = 0.1;
 
             frame.pose.R     = R_prev * R;

@@ -22,4 +22,28 @@ public:
 
     Frame(int frame_id, const cv::Mat& img)
         : id(frame_id), image(img.clone()), timestamp(0.0), processed(false) {}
+
+    // Move constructor
+    Frame(Frame&& other) noexcept
+        : id(other.id),
+          keypoints(std::move(other.keypoints)),
+          descriptors(std::move(other.descriptors)),
+          pose(std::move(other.pose)),
+          image(std::move(other.image)),
+          timestamp(other.timestamp),
+          processed(other.processed) {}
+
+    // Move assignment operator
+    Frame& operator=(Frame&& other) noexcept {
+        if (this != &other) {
+            id = other.id;
+            keypoints = std::move(other.keypoints);
+            descriptors = std::move(other.descriptors);
+            pose = std::move(other.pose);
+            image = std::move(other.image);
+            timestamp = other.timestamp;
+            processed = other.processed;
+        }
+        return *this;
+    }
 };

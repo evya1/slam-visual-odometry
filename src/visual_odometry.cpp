@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <utility>
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
@@ -144,7 +145,7 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
             std::lock_guard<std::mutex> lock(trajectory_mutex_);
             trajectory_positions_.push_back(frame.pose.get_position().clone());
         }
-        previous_frame_ = frame;
+        previous_frame_ = std::move(frame);
         initialized_ = true;
         return display_image;
     }
@@ -180,7 +181,7 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
         }
     }
 
-    previous_frame_ = frame;
+    previous_frame_ = std::move(frame);
     return display_image;
 }
 

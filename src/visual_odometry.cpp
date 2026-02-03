@@ -18,8 +18,10 @@ VisualOdometry::VisualOdometry(int image_width, int image_height)
 
     matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
 
-    const double fx = image_width;
-    const double fy = image_width;
+    // Construct simple camera intrinsic matrix from image dimensions
+    // Assuming principal point at image center and focal length ~ image width
+    const double fx = image_width;   // focal length in pixels
+    const double fy = image_width;   // assuming square pixels
     const double cx = image_width / 2.0;
     const double cy = image_height / 2.0;
 

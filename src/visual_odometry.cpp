@@ -156,7 +156,7 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
             const double scale = 0.1;
 
             frame.pose.R     = R_prev * R;
-            frame.pose.t_vec = t_prev + scale * R * t;
+            frame.pose.t_vec = t_prev + scale * R_prev * t;
 
             {
                 std::lock_guard<std::mutex> lock(trajectory_mutex_);

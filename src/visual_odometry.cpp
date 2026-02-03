@@ -9,10 +9,26 @@
 #include <opencv2/features2d.hpp>
 
 VisualOdometry::VisualOdometry(int image_width, int image_height) {
-    const int nfeatures = 300;
+    constexpr int   kOrbMaxFeatures     = 300;
+    constexpr float kOrbPyramidScale    = 1.2f;
+    constexpr int   kOrbPyramidLevels   = 8;
+    constexpr int   kOrbBorderMarginPx  = 31;  // edgeThreshold
+    constexpr int   kOrbFirstLevel      = 0;
+    constexpr int   kOrbWtaK            = 2;
+    constexpr auto  kOrbScoreType       = cv::ORB::HARRIS_SCORE;
+    constexpr int   kOrbPatchSizePx     = 31;
+    constexpr int   kOrbFastThreshold   = 20;
 
     orb_detector_ = cv::ORB::create(
-        nfeatures, 1.2f, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 20
+        kOrbMaxFeatures,
+        kOrbPyramidScale,
+        kOrbPyramidLevels,
+        kOrbBorderMarginPx,
+        kOrbFirstLevel,
+        kOrbWtaK,
+        kOrbScoreType,
+        kOrbPatchSizePx,
+        kOrbFastThreshold
     );
 
     matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);

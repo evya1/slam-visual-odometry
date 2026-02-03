@@ -81,7 +81,11 @@ endif()
 
 # ---- Build the executable only when deps are available (unless you force REQUIRED) ----
 if(SLAM_VO_REQUIRE_DEPS OR _DEPS_OK)
-  add_executable(slam_vo_run src/main.cpp)
+  add_executable(slam_vo_run
+          src/main.cpp
+          src/trajectory_viewer.cpp
+          src/visual_odometry.cpp
+  )
   target_link_libraries(slam_vo_run PRIVATE slam_vo)
 else()
   message(STATUS "Dependencies missing -> not building slam_vo_run. Install deps or set SLAM_VO_REQUIRE_DEPS=ON.")

@@ -70,7 +70,7 @@ std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, cons
 
         const double median_d = matches[matches.size() / 2].distance;
 
-        const double threshold = std::min(1.6 * min_d, max_d);
+        const double threshold = std::min(1.5 * min_d, 25.0);
 
         std::cout << "[MatchDebug] #matches=" << matches.size()
                 << "  min=" << min_d

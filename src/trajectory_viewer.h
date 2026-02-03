@@ -14,7 +14,6 @@ public:
 
 private:
     bool initialized_ = false;
-    bool home_set_ = false;
 
     pangolin::OpenGlRenderState s_cam_;
     pangolin::View* d_cam_ = nullptr;

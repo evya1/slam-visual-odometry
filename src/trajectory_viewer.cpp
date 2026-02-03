@@ -1,7 +1,6 @@
 
 #include "trajectory_viewer.h"
 
-#include <cmath>   // std::sin, std::cos, M_PI (on some systems)
 #ifdef __APPLE__
 #include <OpenGL/gl.h>
 #else
@@ -19,11 +18,7 @@ void TrajectoryViewer::init() {
 
     s_cam_ = pangolin::OpenGlRenderState(
         pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
-        pangolin::ModelViewLookAt(
-            0, -1.5, -3.0,   // eye
-            0,  0.0,  0.0,   // target
-            pangolin::AxisNegY
-        )
+        pangolin::ModelViewLookAt(0, -5, -10, 0, 0, 0, pangolin::AxisNegY)
     );
 
     d_cam_ = &pangolin::CreateDisplay()
@@ -40,42 +35,12 @@ bool TrajectoryViewer::should_quit() const {
 void TrajectoryViewer::render_step(const std::vector<cv::Mat>& trajectory) {
     init();
 
-    // Center the initial view on the current trajectory (run once)
-    if (!home_set_ && !trajectory.empty()) {
-        const auto& p = trajectory.back();
-        const double cx = p.at<double>(0);
-        const double cy = p.at<double>(1);
-        const double cz = p.at<double>(2);
-
-        const double yaw_deg = 45.0;
-        const double yaw = yaw_deg * M_PI / 180.0;
-
-        // original offset from target
-        const double dx = 0.0;
-        const double dy = -1.5;
-        const double dz = -3.0;
-
-        // yaw rotation around vertical axis (rotate in x-z)
-        const double dx_rot = dx * std::cos(yaw) + dz * std::sin(yaw);
-        const double dz_rot = -dx * std::sin(yaw) + dz * std::cos(yaw);
-
-        s_cam_.SetModelViewMatrix(
-            pangolin::ModelViewLookAt(
-                cx + dx_rot, cy + dy, cz + dz_rot,  // eye
-                cx,          cy,      cz,           // target
-                pangolin::AxisNegY
-            )
-        );
-        home_set_ = true;
-    }
-
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
     d_cam_->Activate(s_cam_);
 
-    const float axis_display_length = 1.0f;
-    draw_axes(axis_display_length);
+    draw_axes(0.5f);
     draw_grid();
 
     if (trajectory.size() > 1) {

@@ -10,7 +10,7 @@
 #include <opencv2/features2d.hpp>
 
 VisualOdometry::VisualOdometry(int image_width, int image_height) {
-    constexpr int kOrbMaxFeatures = 1000;
+    constexpr int kOrbMaxFeatures = 150;
     constexpr float kOrbPyramidScale    = 1.2f;
     constexpr int   kOrbPyramidLevels   = 8;
     constexpr int   kOrbBorderMarginPx  = 31;  // edgeThreshold
@@ -150,7 +150,7 @@ bool VisualOdometry::estimate_relative_pose(
     cv::Mat inlier_mask;
     cv::Mat E = cv::findEssentialMat(
         points1, points2, camera_matrix_,
-        cv::RANSAC, 0.999, 1.0, inlier_mask
+        cv::RANSAC, 0.997, 1.0, inlier_mask
     );
 
     if (E.empty()) {
@@ -164,7 +164,7 @@ bool VisualOdometry::estimate_relative_pose(
 
     const int valid_points = cv::recoverPose(E, points1, points2, camera_matrix_, R, t, inlier_mask);
 
-    if (valid_points < 8) {
+    if (valid_points < 20 || inlier_count < 30) {
         std::cerr << "Not enough valid points after pose recovery: " << valid_points << "\n";
         return false;
     }
@@ -195,7 +195,7 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
 
     const std::vector<cv::DMatch> matches = match_features(previous_frame_, frame);
 
-    if (matches.size() >= 8) {
+    if (matches.size() >= 16) {
         cv::Mat R, t;
         if (estimate_relative_pose(previous_frame_, frame, matches, R, t)) {
             const cv::Mat R_prev = previous_frame_.pose.R;
@@ -208,10 +208,10 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
             //   come from additional sensors (e.g., IMU, wheel odometry, depth)
             //   or prior knowledge about the scene/trajectory.
             //   For this demo, use a fixed scale.
-            const double scale = 0.1;
+            const double scale = 0.3;
 
-            frame.pose.R = R_prev * R;
-            frame.pose.t_vec = t_prev + scale * R_prev * t;
+            frame.pose.R     = R_prev * R;
+            frame.pose.t_vec = t_prev + scale * (R_prev * t);
 
             {
                 std::lock_guard<std::mutex> lock(trajectory_mutex_);

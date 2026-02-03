@@ -8,7 +8,6 @@
 #include <opencv2/features2d.hpp>
 
 VisualOdometry::VisualOdometry(int image_width, int image_height)
-    : initialized_(false)
 {
     const int nfeatures = 2000;
 

@@ -8,9 +8,8 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/features2d.hpp>
 
-VisualOdometry::VisualOdometry(int image_width, int image_height)
-{
-    const int nfeatures = 2000;
+VisualOdometry::VisualOdometry(int image_width, int image_height) {
+    const int nfeatures = 300;
 
     orb_detector_ = cv::ORB::create(
         nfeatures, 1.2f, 8, 31, 0, 2, cv::ORB::HARRIS_SCORE, 31, 20
@@ -20,20 +19,20 @@ VisualOdometry::VisualOdometry(int image_width, int image_height)
 
     // Construct simple camera intrinsic matrix from image dimensions
     // Assuming principal point at image center and focal length ~ image width
-    const double fx = image_width;   // focal length in pixels
-    const double fy = image_width;   // assuming square pixels
+    const double fx = image_width; // focal length in pixels
+    const double fy = image_width; // assuming square pixels
     const double cx = image_width / 2.0;
     const double cy = image_height / 2.0;
 
     camera_matrix_ = (cv::Mat_<double>(3, 3) <<
-        fx, 0, cx,
-        0, fy, cy,
-        0, 0, 1);
+                      fx, 0, cx,
+                      0, fy, cy,
+                      0, 0, 1);
 
     std::cout << "Camera matrix initialized:\n" << camera_matrix_ << std::endl;
 }
 
-void VisualOdometry::detect_features(Frame& frame) {
+void VisualOdometry::detect_features(Frame &frame) {
     cv::Mat gray;
     const int channels = frame.image.channels();
 
@@ -49,7 +48,7 @@ void VisualOdometry::detect_features(Frame& frame) {
     std::cout << "Frame " << frame.id << ": Detected " << frame.keypoints.size() << " keypoints\n";
 }
 
-std::vector<cv::DMatch> VisualOdometry::match_features(const Frame& frame1, const Frame& frame2) {
+std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, const Frame &frame2) {
     std::vector<cv::DMatch> matches;
 
     if (frame1.descriptors.empty() || frame2.descriptors.empty()) {
@@ -59,13 +58,34 @@ std::vector<cv::DMatch> VisualOdometry::match_features(const Frame& frame1, cons
     matcher_->match(frame1.descriptors, frame2.descriptors, matches);
 
     std::sort(matches.begin(), matches.end(),
-              [](const cv::DMatch& a, const cv::DMatch& b) { return a.distance < b.distance; });
+              [](const cv::DMatch &a, const cv::DMatch &b) { return a.distance < b.distance; });
+    // --- DEBUG: distance stats ---
+    if (!matches.empty()) {
+        const double min_d = matches.front().distance;
+        const double max_d = matches.back().distance;
+
+        double sum = 0.0;
+        for (const auto &m: matches) sum += m.distance;
+        const double mean_d = sum / matches.size();
+
+        const double median_d = matches[matches.size() / 2].distance;
+
+        const double threshold = std::min(1.6 * min_d, max_d);
+
+        std::cout << "[MatchDebug] #matches=" << matches.size()
+                << "  min=" << min_d
+                << "  median=" << median_d
+                << "  mean=" << mean_d
+                << "  max=" << max_d
+                << "  threshold=" << threshold
+                << "  (units: Hamming bits)\n";
+    }
 
     std::vector<cv::DMatch> good_matches;
     const double min_dist = matches.empty() ? 0.0 : matches.front().distance;
-    const double threshold = std::max(2.0 * min_dist, 30.0);
+    const double threshold = std::min(1.5 * min_dist, 25.0);
 
-    for (const auto& m : matches) {
+    for (const auto &m: matches) {
         if (m.distance < threshold) {
             good_matches.push_back(m);
         }
@@ -76,11 +96,11 @@ std::vector<cv::DMatch> VisualOdometry::match_features(const Frame& frame1, cons
 }
 
 bool VisualOdometry::estimate_relative_pose(
-    const Frame& frame1,
-    const Frame& frame2,
-    const std::vector<cv::DMatch>& matches,
-    cv::Mat& R,
-    cv::Mat& t
+    const Frame &frame1,
+    const Frame &frame2,
+    const std::vector<cv::DMatch> &matches,
+    cv::Mat &R,
+    cv::Mat &t
 ) {
     if (matches.size() < 8) {
         std::cerr << "Not enough matches for pose estimation\n";
@@ -91,14 +111,14 @@ bool VisualOdometry::estimate_relative_pose(
     points1.reserve(matches.size());
     points2.reserve(matches.size());
 
-    for (const auto& m : matches) {
+    for (const auto &m: matches) {
         if (m.queryIdx < 0 ||
             m.queryIdx >= static_cast<int>(frame1.keypoints.size()) ||
             m.trainIdx < 0 ||
             m.trainIdx >= static_cast<int>(frame2.keypoints.size())) {
             std::cerr << "Skipping match with out-of-range indices: "
-                      << "queryIdx=" << m.queryIdx
-                      << ", trainIdx=" << m.trainIdx << "\n";
+                    << "queryIdx=" << m.queryIdx
+                    << ", trainIdx=" << m.trainIdx << "\n";
             continue;
         }
         points1.push_back(frame1.keypoints[m.queryIdx].pt);
@@ -130,7 +150,7 @@ bool VisualOdometry::estimate_relative_pose(
     return true;
 }
 
-cv::Mat VisualOdometry::process_frame(Frame& frame) {
+cv::Mat VisualOdometry::process_frame(Frame &frame) {
     detect_features(frame);
 
     cv::Mat display_image;
@@ -166,7 +186,7 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
             //   For this demo, use a fixed scale.
             const double scale = 0.1;
 
-            frame.pose.R     = R_prev * R;
+            frame.pose.R = R_prev * R;
             frame.pose.t_vec = t_prev + scale * R_prev * t;
 
             {

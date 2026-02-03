@@ -27,7 +27,6 @@ private:
         cv::Mat& t
     );
 
-private:
     cv::Ptr<cv::ORB> orb_detector_;
     cv::Ptr<cv::BFMatcher> matcher_;
     cv::Mat camera_matrix_;

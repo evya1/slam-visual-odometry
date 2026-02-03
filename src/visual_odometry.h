@@ -8,6 +8,11 @@
 
 #include "frame.h"
 
+/**
+ * VisualOdometry Class - Performs monocular visual odometry.
+ * Processes incoming frames to detect and match features, estimates
+ * relative camera motion between frames, and maintains a 3D trajectory.
+ */
 class VisualOdometry {
 public:
     VisualOdometry(int image_width, int image_height);

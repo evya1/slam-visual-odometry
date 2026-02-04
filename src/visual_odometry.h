@@ -22,7 +22,15 @@ public:
 
 private:
     void detect_features(Frame& frame);
-    std::vector<cv::DMatch> match_features(const Frame& frame1, const Frame& frame2);
+
+    void print_debugging_statistics(double min_dist, double max_dist, std::size_t num_matches, double mean_dist,
+                                    double median_dist, double threshold);
+
+    double get_mean_dist_ham(std::vector<cv::DMatch> matches);
+
+    double get_median_dist(std::vector<cv::DMatch> matches);
+
+    std::vector<cv::DMatch> get_good_matches_of_features(const Frame& frame1, const Frame& frame2);
 
     bool estimate_relative_pose(
         const Frame& frame1,

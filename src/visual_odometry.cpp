@@ -65,7 +65,31 @@ void VisualOdometry::detect_features(Frame &frame) {
     std::cout << "Frame " << frame.id << ": Detected " << frame.keypoints.size() << " keypoints\n";
 }
 
-std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, const Frame &frame2) {
+void VisualOdometry::print_debugging_statistics(const double min_dist, const double max_dist, const std::size_t num_matches, const double mean_dist, const double median_dist, const double threshold) {
+    std::cout << "[MatchDebug] #matches=" << num_matches
+            << "  min=" << min_dist
+            << "  median=" << median_dist
+            << "  mean=" << mean_dist
+            << "  max=" << max_dist
+            << "  threshold=" << threshold
+            << "  (units: Hamming bits)\n";
+}
+
+double VisualOdometry::get_mean_dist_ham(std::vector<cv::DMatch> matches) {
+    double sum = 0.0;
+    for (const auto &m: matches) sum += m.distance;
+
+    const double mean_dist = sum / static_cast<double>(matches.size());
+    return mean_dist;
+}
+
+double VisualOdometry::get_median_dist(std::vector<cv::DMatch> matches) {
+    const std::size_t median_index = matches.size() / 2;
+    const double median_dist = matches[median_index].distance;
+    return median_dist;
+}
+
+std::vector<cv::DMatch> VisualOdometry::get_good_matches_of_features(const Frame &frame1, const Frame &frame2) {
     std::vector<cv::DMatch> matches;
     constexpr double kMaxHammingThreshold = 25.0;
 
@@ -83,27 +107,11 @@ std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, cons
     const double min_dist = matches.front().distance;
     const double max_dist = matches.back().distance;
 
-    // --- DEBUG: distance stats ---
-
-    double sum = 0.0;
-        for (const auto &m: matches) sum += m.distance;
-
-    const std::size_t num_matches = matches.size();
-    const double mean_dist = sum / static_cast<double>(num_matches);
-
-    const std::size_t median_index = num_matches / 2;
-    const double median_dist = matches[median_index].distance;
+    const double mean_dist = get_mean_dist_ham(matches);
+    const double median_dist = get_median_dist(matches);
     const double threshold = std::min(std::max(3.0 * min_dist, 0.7 * median_dist), kMaxHammingThreshold);
 
-
-    std::cout << "[MatchDebug] #matches=" << num_matches
-            << "  min=" << min_dist
-            << "  median=" << median_dist
-            << "  mean=" << mean_dist
-            << "  max=" << max_dist
-            << "  threshold=" << threshold
-            << "  (units: Hamming bits)\n";
-
+    print_debugging_statistics(min_dist, max_dist, matches.size(), mean_dist, median_dist, threshold);
 
     std::vector<cv::DMatch> good_matches;
     good_matches.reserve(matches.size());
@@ -193,7 +201,7 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
         return display_image;
     }
 
-    const std::vector<cv::DMatch> matches = match_features(previous_frame_, frame);
+    const std::vector<cv::DMatch> matches = get_good_matches_of_features(previous_frame_, frame);
 
     if (matches.size() >= 16) {
         cv::Mat R, t;

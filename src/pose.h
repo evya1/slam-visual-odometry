@@ -30,9 +30,16 @@ public:
         T(cv::Rect(3, 0, 1, 3)).copyTo(t_vec);
     }
 
-    // camera center in world/map coordinates (for world->camera convention)
+    // Camera center in world coordinates.
+    //
+    // Pose convention here is camera->world (T_w_c):
+    //   $x_w = R_{wc}\,x_c + t_{wc}$
+    // so the camera center is:
+    //   $C_w = t_{wc}$
+    //
+    // @return cv::Mat 3x1 (CV_64F) column vector representing $C_w$.
     cv::Mat get_position() const {
-        return -R.t() * t_vec;
+        return t_vec;
     }
 
     // == Eigen helpers ==
@@ -51,29 +58,19 @@ public:
         return te;
     }
 
-    // Treat Pose as world->camera:  x_c = R_cw x_w + t_cw
+    // Inverse transform world->camera (useful sometimes)
     Eigen::Matrix4d T_c_w_eigen() const {
-        Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-        T.topLeftCorner<3, 3>() = rotation_eigen();
-        T.topRightCorner<3, 1>() = translation_eigen();
-        return T;
-    }
-
-    // Inverse transform camera->world (useful for Pangolin drawing)
-    Eigen::Matrix4d T_w_c_eigen() const {
-        const Eigen::Matrix3d Rcw = rotation_eigen();
-        const Eigen::Vector3d tcw = translation_eigen();
+        const Eigen::Matrix3d Rwc = rotation_eigen();
+        const Eigen::Vector3d twc = translation_eigen();
 
         Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-        T.topLeftCorner<3, 3>() = Rcw.transpose();            // Rwc
-        T.topRightCorner<3, 1>() = -Rcw.transpose() * tcw;    // twc
+        T.topLeftCorner<3, 3>() = Rwc.transpose();            // Rcw
+        T.topRightCorner<3, 1>() = -Rwc.transpose() * twc;    // tcw
         return T;
     }
 
     // Camera center in world coordinates (Eigen)
     Eigen::Vector3d position_w_eigen() const {
-        const Eigen::Matrix3d Rcw = rotation_eigen();
-        const Eigen::Vector3d tcw = translation_eigen();
-        return -Rcw.transpose() * tcw;
+        return translation_eigen(); // $C_w = t_{wc}$
     }
 };

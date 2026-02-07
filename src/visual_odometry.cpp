@@ -172,7 +172,7 @@ bool VisualOdometry::estimate_relative_pose(
 
     const int valid_points = cv::recoverPose(E, points1, points2, camera_matrix_, R, t, inlier_mask);
 
-    if (valid_points < 20 || inlier_count < 30) {
+    if (valid_points < 15 || inlier_count < 25) {
         std::cerr << "Not enough valid points after pose recovery: " << valid_points << "\n";
         return false;
     }
@@ -181,17 +181,58 @@ bool VisualOdometry::estimate_relative_pose(
     return true;
 }
 
-cv::Mat VisualOdometry::process_frame(Frame &frame) {
-    detect_features(frame);
 
+// Keypoint visualization
+cv::Mat render_current_frame_with_keypoints_overlay(const Frame& frame) {
     cv::Mat display_image;
     cv::drawKeypoints(
         frame.image, frame.keypoints, display_image,
         cv::Scalar(0, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS
     );
+    return display_image;
+}
+
+// Invert relative camera motion
+void invert_relative_camera_to_camera_transform(
+    const cv::Mat& R_c2_c1,
+    const cv::Mat& t_c2_c1,
+    cv::Mat& R_c1_c2,
+    cv::Mat& t_c1_c2
+) {
+    // Inverse of: x_c2 = R x_c1 + t  is: x_c1 = R^T x_c2 - R^T t
+    R_c1_c2 = R_c2_c1.t();
+    t_c1_c2 = -R_c2_c1.t() * t_c2_c1;
+}
+
+// Compose camera->world pose
+Pose compose_next_camera_to_world_pose_from_inverse_relative_motion(
+    const Pose& prev_pose,           // T_w_c1
+    const cv::Mat& R_c1_c2,          // inverse relative rotation
+    const cv::Mat& t_c1_c2,          // inverse relative translation (in c1 coords)
+    const double scale
+) {
+    Pose out;
+    // T_w_c2 = T_w_c1 * T_c1_c2
+    out.R     = prev_pose.R * R_c1_c2;
+    out.t_vec = prev_pose.t_vec + scale * (prev_pose.R * t_c1_c2);
+    return out;
+}
+
+void print_camera_position_debug(const Pose& pose) {
+    const cv::Mat pos = pose.get_position(); // for T_w_c: should be t_vec
+    std::cout << "Position: [" << pos.at<double>(0) << ", "
+                            << pos.at<double>(1) << ", "
+                            << pos.at<double>(2) << "]\n";
+}
+
+
+cv::Mat VisualOdometry::process_frame(Frame& frame) {
+    detect_features(frame);
+    const cv::Mat display_image = render_current_frame_with_keypoints_overlay(frame);
 
     if (!initialized_) {
-        frame.pose = Pose();
+        // First-frame initialization
+        frame.pose = Pose(); // R = I, t = 0
         {
             std::lock_guard<std::mutex> lock(trajectory_mutex_);
             trajectory_positions_.push_back(frame.pose.get_position().clone());
@@ -201,36 +242,34 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
         return display_image;
     }
 
-    const std::vector<cv::DMatch> matches = get_good_matches_of_features(previous_frame_, frame);
+    // Failure-safe pose default
+    frame.pose = previous_frame_.pose;
 
-    if (matches.size() >= 16) {
-        cv::Mat R, t;
-        if (estimate_relative_pose(previous_frame_, frame, matches, R, t)) {
-            const cv::Mat R_prev = previous_frame_.pose.R;
-            std::cout << "R_prev:" << R_prev ;
-            const cv::Mat t_prev = previous_frame_.pose.t_vec;
+    const std::vector<cv::DMatch> matches =
+        get_good_matches_of_features(previous_frame_, frame);
 
-            // Scale factor:
-            //   In a monocular visual odometry system, absolute scale cannot be
-            //   recovered from images alone. In a real system, the scale would
-            //   come from additional sensors (e.g., IMU, wheel odometry, depth)
-            //   or prior knowledge about the scene/trajectory.
-            //   For this demo, use a fixed scale.
-            const double scale = 0.3;
+    constexpr std::size_t kMinMatchesForPose = 5;
 
-            frame.pose.R     = R_prev * R;
-            frame.pose.t_vec = t_prev + scale * (R_prev * t);
+    if (matches.size() >= kMinMatchesForPose) {
+        cv::Mat R_c2_c1, t_c2_c1;
+        if (estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1)) {
+            constexpr double kScale = 0.3;
 
-            {
-                std::lock_guard<std::mutex> lock(trajectory_mutex_);
-                trajectory_positions_.push_back(frame.pose.get_position().clone());
-            }
+            cv::Mat R_c1_c2, t_c1_c2;
+            invert_relative_camera_to_camera_transform(R_c2_c1, t_c2_c1, R_c1_c2, t_c1_c2);
 
-            const cv::Mat pos = frame.pose.get_position();
-            std::cout << "Position: [" << pos.at<double>(0) << ", "
-                                    << pos.at<double>(1) << ", "
-                                    << pos.at<double>(2) << "]\n";
+            frame.pose = compose_next_camera_to_world_pose_from_inverse_relative_motion(
+                previous_frame_.pose, R_c1_c2, t_c1_c2, kScale
+            );
+
+            print_camera_position_debug(frame.pose);
         }
+    }
+
+    // Append trajectory every frame (even if pose didn't update)
+    {
+        std::lock_guard<std::mutex> lock(trajectory_mutex_);
+        trajectory_positions_.push_back(frame.pose.get_position().clone());
     }
 
     previous_frame_ = std::move(frame);

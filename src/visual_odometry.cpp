@@ -10,7 +10,7 @@
 #include <opencv2/features2d.hpp>
 
 VisualOdometry::VisualOdometry(int image_width, int image_height) {
-    constexpr int kOrbMaxFeatures = 1000;
+    constexpr int kOrbMaxFeatures = 150;
     constexpr float kOrbPyramidScale    = 1.2f;
     constexpr int   kOrbPyramidLevels   = 8;
     constexpr int   kOrbBorderMarginPx  = 31;  // edgeThreshold
@@ -65,7 +65,31 @@ void VisualOdometry::detect_features(Frame &frame) {
     std::cout << "Frame " << frame.id << ": Detected " << frame.keypoints.size() << " keypoints\n";
 }
 
-std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, const Frame &frame2) {
+void VisualOdometry::print_debugging_statistics(const double min_dist, const double max_dist, const std::size_t num_matches, const double mean_dist, const double median_dist, const double threshold) {
+    std::cout << "[MatchDebug] #matches=" << num_matches
+            << "  min=" << min_dist
+            << "  median=" << median_dist
+            << "  mean=" << mean_dist
+            << "  max=" << max_dist
+            << "  threshold=" << threshold
+            << "  (units: Hamming bits)\n";
+}
+
+double VisualOdometry::get_mean_dist_ham(std::vector<cv::DMatch> matches) {
+    double sum = 0.0;
+    for (const auto &m: matches) sum += m.distance;
+
+    const double mean_dist = sum / static_cast<double>(matches.size());
+    return mean_dist;
+}
+
+double VisualOdometry::get_median_dist(std::vector<cv::DMatch> matches) {
+    const std::size_t median_index = matches.size() / 2;
+    const double median_dist = matches[median_index].distance;
+    return median_dist;
+}
+
+std::vector<cv::DMatch> VisualOdometry::get_good_matches_of_features(const Frame &frame1, const Frame &frame2) {
     std::vector<cv::DMatch> matches;
     constexpr double kMaxHammingThreshold = 25.0;
 
@@ -83,27 +107,11 @@ std::vector<cv::DMatch> VisualOdometry::match_features(const Frame &frame1, cons
     const double min_dist = matches.front().distance;
     const double max_dist = matches.back().distance;
 
-    // --- DEBUG: distance stats ---
-
-    double sum = 0.0;
-        for (const auto &m: matches) sum += m.distance;
-
-    const std::size_t num_matches = matches.size();
-    const double mean_dist = sum / static_cast<double>(num_matches);
-
-    const std::size_t median_index = num_matches / 2;
-    const double median_dist = matches[median_index].distance;
+    const double mean_dist = get_mean_dist_ham(matches);
+    const double median_dist = get_median_dist(matches);
     const double threshold = std::min(std::max(3.0 * min_dist, 0.7 * median_dist), kMaxHammingThreshold);
 
-
-    std::cout << "[MatchDebug] #matches=" << num_matches
-            << "  min=" << min_dist
-            << "  median=" << median_dist
-            << "  mean=" << mean_dist
-            << "  max=" << max_dist
-            << "  threshold=" << threshold
-            << "  (units: Hamming bits)\n";
-
+    print_debugging_statistics(min_dist, max_dist, matches.size(), mean_dist, median_dist, threshold);
 
     std::vector<cv::DMatch> good_matches;
     good_matches.reserve(matches.size());
@@ -150,7 +158,7 @@ bool VisualOdometry::estimate_relative_pose(
     cv::Mat inlier_mask;
     cv::Mat E = cv::findEssentialMat(
         points1, points2, camera_matrix_,
-        cv::RANSAC, 0.999, 1.0, inlier_mask
+        cv::RANSAC, 0.997, 1.0, inlier_mask
     );
 
     if (E.empty()) {
@@ -164,7 +172,7 @@ bool VisualOdometry::estimate_relative_pose(
 
     const int valid_points = cv::recoverPose(E, points1, points2, camera_matrix_, R, t, inlier_mask);
 
-    if (valid_points < 8) {
+    if (valid_points < 20 || inlier_count < 30) {
         std::cerr << "Not enough valid points after pose recovery: " << valid_points << "\n";
         return false;
     }
@@ -193,9 +201,9 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
         return display_image;
     }
 
-    const std::vector<cv::DMatch> matches = match_features(previous_frame_, frame);
+    const std::vector<cv::DMatch> matches = get_good_matches_of_features(previous_frame_, frame);
 
-    if (matches.size() >= 8) {
+    if (matches.size() >= 16) {
         cv::Mat R, t;
         if (estimate_relative_pose(previous_frame_, frame, matches, R, t)) {
             const cv::Mat R_prev = previous_frame_.pose.R;
@@ -208,10 +216,10 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
             //   come from additional sensors (e.g., IMU, wheel odometry, depth)
             //   or prior knowledge about the scene/trajectory.
             //   For this demo, use a fixed scale.
-            const double scale = 0.1;
+            const double scale = 0.3;
 
-            frame.pose.R = R_prev * R;
-            frame.pose.t_vec = t_prev + scale * R_prev * t;
+            frame.pose.R     = R_prev * R;
+            frame.pose.t_vec = t_prev + scale * (R_prev * t);
 
             {
                 std::lock_guard<std::mutex> lock(trajectory_mutex_);

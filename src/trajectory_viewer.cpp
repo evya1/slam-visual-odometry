@@ -16,10 +16,14 @@ void TrajectoryViewer::init() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const float k = 0.1f; // 10% of the original distance (closer)
+    const float k = 0.1f;
+
+    // Pan target to the LEFT -> scene appears more to the RIGHT
+    // const float x_pan = -2.0f * k;   // try -1*k .. -5*k and tune
+    const float eye_x = +2.0f * k; // camera right => scene shifts left
     s_cam_ = pangolin::OpenGlRenderState(
         pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 389, 0.1, 1000),
-        pangolin::ModelViewLookAt(0, -5*k, -10*k, 0, 0, 0, pangolin::AxisNegY)
+pangolin::ModelViewLookAt(eye_x, -5*k, -10*k, 0,0,0, pangolin::AxisNegY)
     );
 
     d_cam_ = &pangolin::CreateDisplay()

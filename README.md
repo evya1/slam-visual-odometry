@@ -41,11 +41,8 @@ make docker-run-gui
 
 ```
 .
-├── include/         # Header files
-├── src/             # Source files
-├── tests/           # Unit tests
-├── scripts/         # Utility scripts
-├── configs/         # Configuration files
+├── src/             # Source + header files
+├── build/           # Build output (generated)
 ├── data/            # Dataset directory (not tracked)
 └── results/         # Output results (not tracked)
 ```
@@ -67,7 +64,7 @@ tar -xf data/Dataset_VO.tar -C data/sequence
 
 ## Development
 
-This is a minimal scaffold. Source code will be added incrementally.
+Source code lives in `src/` with headers colocated alongside implementations.
 
 ## License
 

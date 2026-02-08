@@ -14,7 +14,6 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
-#include <stdexcept>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d.hpp>
@@ -32,13 +31,13 @@ namespace fs = std::filesystem;
 // =============================================================================
 
 // Load image paths from dataset directory (sorted lexicographically)
-std::vector<std::string> load_image_paths(const std::string& dataset_path) {
+std::vector<std::string> load_image_paths(const std::string &dataset_path) {
     std::vector<std::string> image_paths;
 
-    for (const auto& entry : fs::directory_iterator(dataset_path)) {
+    for (const auto &entry: fs::directory_iterator(dataset_path)) {
         if (entry.is_regular_file()) {
             std::string path = entry.path().string();
-            std::string ext  = entry.path().extension().string();
+            std::string ext = entry.path().extension().string();
 
             // Convert extension to lowercase for comparison
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -53,10 +52,11 @@ std::vector<std::string> load_image_paths(const std::string& dataset_path) {
     std::sort(image_paths.begin(), image_paths.end());
 
     std::cout << "Found " << image_paths.size() << " images in dataset" << std::endl;
+
     return image_paths;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "  Epipolar Visual Odometry - NAV HW2   " << std::endl;
     std::cout << "========================================" << std::endl;
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
             "Dataset_VO"
         };
 
-        for (const auto& c : candidates) {
+        for (const auto &c: candidates) {
             if (std::filesystem::exists(c) && std::filesystem::is_directory(c)) {
                 dataset_path = c;
                 break;
@@ -82,13 +82,13 @@ int main(int argc, char** argv) {
 
     if (dataset_path.empty()) {
         std::cerr
-            << "Dataset directory not found.\n"
-            << "Expected one of:\n"
-            << "  - data/Dataset_VO (recommended)\n"
-            << "  - Dataset_VO\n\n"
-            << "Run with an explicit path, e.g.:\n"
-            << "  ./build/slam_vo_run data/Dataset_VO\n"
-            << "  ./build/slam_vo_run /workspace/data/Dataset_VO   (inside Docker)\n";
+                << "Dataset directory not found.\n"
+                << "Expected one of:\n"
+                << "  - data/Dataset_VO (recommended)\n"
+                << "  - Dataset_VO\n\n"
+                << "Run with an explicit path, e.g.:\n"
+                << "  ./build/slam_vo_run data/Dataset_VO\n"
+                << "  ./build/slam_vo_run /workspace/data/Dataset_VO   (inside Docker)\n";
         return -1;
     }
 
@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    int image_width  = first_image.cols;
+    int image_width = first_image.cols;
     int image_height = first_image.rows;
     std::cout << "Image dimensions: " << image_width << " x " << image_height << std::endl;
 
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
 
     bool paused = false;
-    int frame_delay = 30;  // ms between frames
+    int frame_delay = 30; // ms between frames
 
     // For epipolar viewer (frame0 vs frame1) using VO's computed F
     cv::Mat prev_image;
@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
         cv::Mat display_image = vo.process_frame(frame);
 
         // Update trajectory viewer
-        viewer.render_step(vo.get_trajectory());
+        viewer.render_step(vo.get_trajectory_poses());
 
         // Display images
         cv::imshow("Visual Odometry: Keypoints", display_image);
@@ -176,23 +176,25 @@ int main(int argc, char** argv) {
         // using the F computed by YOUR VO.
         //
         // Important convention note:
-        // - Your VO prints/derives F in OpenCV form:  x2^T * F * x1 = 0
-        // - Viewer expects:                           p1^T * F * p2 = 0
-        // These match by transpose: F_view = F_vo^T  (when left=frame0, right=frame1)
+        // - Your VO derives/prints F in OpenCV form: x2^T * F * x1 = 0
+        // - Viewer expects:                          p1^T * F * p2 = 0
+        // So: F_for_viewer = F_vo^T  (when left=frame0, right=frame1)
+        //
+        // conv=OpenCV_0Based means: your coordinates are 0-based pixels (OpenCV mouse coords).
+        // The viewer will internally convert to its 1-based convention.
         // ---------------------------------------------------------------------
         if (!shown_epipolar_once && i == 1 && vo.has_last_F() && !prev_image.empty()) {
             std::cout << "\n========== VO Fundamental Matrix ==========\n";
             std::cout << "F from VO (OpenCV form: x2^T * F * x1 = 0):\n" << vo.last_F() << "\n";
 
-            // Convert to viewer convention: p1^T * F * p2 = 0  => transpose
+            // Convert to viewer convention (swap p1/p2 via transpose)
             cv::Matx33d F_for_viewer = vo.last_F().t();
 
             std::cout << "\nF passed to viewer (transposed for p1^T * F * p2 = 0):\n"
-                      << F_for_viewer << "\n";
+                    << F_for_viewer << "\n";
             std::cout << "==========================================\n\n";
 
-            // This blocks until you close the epipolar window (ESC inside that window).
-            // After you close it, the VO loop continues.
+            // Blocks until you close the epipolar window (ESC inside that window).
             run_epipolar_viewer(prev_image, image,
                                 F_for_viewer,
                                 FConvention::OpenCV_0Based,
@@ -209,13 +211,15 @@ int main(int argc, char** argv) {
         while (true) {
             int key = cv::waitKey(paused ? 100 : frame_delay);
 
-            if (key == 'q' || key == 'Q' || key == 27) {  // q, Q, or ESC
+            if (key == 'q' || key == 'Q' || key == 27) {
+                // q, Q, or ESC
                 std::cout << "\nQuitting..." << std::endl;
                 cv::destroyAllWindows();
                 return 0;
             }
 
-            if (key == ' ') {  // SPACE
+            if (key == ' ') {
+                // SPACE
                 paused = !paused;
                 std::cout << (paused ? "Paused" : "Resumed") << std::endl;
             }
@@ -242,6 +246,7 @@ int main(int argc, char** argv) {
     std::cout << "Press any key to exit..." << std::endl;
 
     cv::waitKey(0);
+
     cv::destroyAllWindows();
 
     return 0;

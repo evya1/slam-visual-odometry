@@ -19,8 +19,13 @@ public:
 
     cv::Mat process_frame(Frame& frame);
     std::vector<cv::Mat> get_trajectory();
+    bool has_last_F() const { return has_last_F_; }
+    cv::Matx33d last_F() const { return last_F_; }
 
 private:
+    bool has_last_F_ = false;
+    cv::Matx33d last_F_{};
+
     void detect_features(Frame& frame);
 
     void print_debugging_statistics(double min_dist, double max_dist, std::size_t num_matches, double mean_dist,

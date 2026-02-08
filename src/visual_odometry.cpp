@@ -167,6 +167,24 @@ bool VisualOdometry::estimate_relative_pose(
     }
     std::cout << "Essential matrix: " << E << "\n";
 
+    // Convert E to double if needed
+    cv::Mat E64;
+    E.convertTo(E64, CV_64F);
+
+    cv::Mat Kinv = camera_matrix_.inv();
+    cv::Mat F = Kinv.t() * E64 * Kinv; // F = K^{-T} * E * K^{-1}
+
+    std::cout << "Fundamental matrix F (pixel coords, OpenCV convention x2^T F x1 = 0):\n"
+              << F << "\n";
+
+    cv::Matx33d Fm;
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            Fm(r, c) = F.at<double>(r, c);
+
+    last_F_ = Fm;
+    has_last_F_ = true;
+
     const int inlier_count = cv::countNonZero(inlier_mask);
     std::cout << "Essential matrix computed with " << inlier_count << " inliers\n";
 

@@ -14,6 +14,7 @@
 #include <thread>
 #include <mutex>
 #include <chrono>
+#include <stdexcept>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d.hpp>
@@ -22,6 +23,67 @@
 #include "frame.h"
 #include "trajectory_viewer.h"
 #include "visual_odometry.h"
+#include "epipolar_viewer.h"
+
+
+static cv::Matx33d estimate_fundamental_orb(const cv::Mat& img1_bgr, const cv::Mat& img2_bgr) {
+    cv::Mat img1, img2;
+    if (img1_bgr.channels() == 3) cv::cvtColor(img1_bgr, img1, cv::COLOR_BGR2GRAY);
+    else img1 = img1_bgr;
+    if (img2_bgr.channels() == 3) cv::cvtColor(img2_bgr, img2, cv::COLOR_BGR2GRAY);
+    else img2 = img2_bgr;
+
+    auto orb = cv::ORB::create(2000);
+
+    std::vector<cv::KeyPoint> k1, k2;
+    cv::Mat d1, d2;
+    orb->detectAndCompute(img1, cv::noArray(), k1, d1);
+    orb->detectAndCompute(img2, cv::noArray(), k2, d2);
+
+    if (d1.empty() || d2.empty()) {
+        throw std::runtime_error("estimate_fundamental_orb: ORB descriptors are empty.");
+    }
+
+    cv::BFMatcher matcher(cv::NORM_HAMMING, /*crossCheck=*/true);
+    std::vector<cv::DMatch> matches;
+    matcher.match(d1, d2, matches);
+
+    if (matches.size() < 8) {
+        throw std::runtime_error("estimate_fundamental_orb: not enough matches for F (need >= 8).");
+    }
+
+    std::sort(matches.begin(), matches.end(),
+              [](const cv::DMatch& a, const cv::DMatch& b) { return a.distance < b.distance; });
+
+    // Keep best N matches (helps stability)
+    const int keep = std::min<int>(matches.size(), 800);
+    matches.resize(keep);
+
+    std::vector<cv::Point2f> p1, p2;
+    p1.reserve(matches.size());
+    p2.reserve(matches.size());
+    for (const auto& m : matches) {
+        p1.push_back(k1[m.queryIdx].pt); // in img1
+        p2.push_back(k2[m.trainIdx].pt); // in img2
+    }
+
+    cv::Mat inlierMask;
+    cv::Mat F = cv::findFundamentalMat(p1, p2, cv::FM_RANSAC, 1.5, 0.99, inlierMask);
+    if (F.empty() || F.rows != 3 || F.cols != 3) {
+        throw std::runtime_error("estimate_fundamental_orb: findFundamentalMat failed.");
+    }
+
+    cv::Mat F64;
+    F.convertTo(F64, CV_64F);
+
+    cv::Matx33d Fcv;
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            Fcv(r, c) = F64.at<double>(r, c);
+
+    return Fcv;
+}
+
 
 namespace fs = std::filesystem;
 
@@ -55,9 +117,6 @@ std::vector<std::string> load_image_paths(const std::string& dataset_path) {
     return image_paths;
 }
 
-// =============================================================================
-// Main Function
-// =============================================================================
 int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "  Epipolar Visual Odometry - NAV HW2   " << std::endl;
@@ -110,6 +169,35 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to load first image: " << image_paths[0] << std::endl;
         return -1;
     }
+
+    // --- Epipolar viewer on first two frames (press ESC to close it and continue) ---
+    if (image_paths.size() >= 2) {
+        cv::Mat img0 = cv::imread(image_paths[0]);
+        cv::Mat img1 = cv::imread(image_paths[1]);
+
+        if (img0.empty() || img1.empty()) {
+            std::cerr << "Failed to load first two images for epipolar viewer.\n";
+        } else {
+            try {
+                cv::Matx33d F_from_opencv = estimate_fundamental_orb(img0, img1);
+
+                // IMPORTANT:
+                // OpenCV commonly returns F such that:   x2^T * F * x1 = 0
+                // Your viewer docs say it uses:          p1^T * F * p2 = 0
+                // So transpose before passing (unless you updated your viewer conversion to handle this).
+                cv::Matx33d F_for_viewer = F_from_opencv.t();
+
+                run_epipolar_viewer(img0, img1, F_for_viewer,
+                                    FConvention::OpenCV_0Based,
+                                    "Epipolar: frame0 vs frame1",
+                                    /*normalizeF=*/true);
+
+            } catch (const std::exception& e) {
+                std::cerr << "Epipolar viewer setup failed: " << e.what() << "\n";
+            }
+        }
+    }
+
 
     int image_width = first_image.cols;
     int image_height = first_image.rows;

@@ -1,9 +1,7 @@
 #pragma once
 /**
  * @file epipolar_viewer.h
- * @brief Interactive epipolar-geometry viewer (OpenCV) inspired by MATLAB vgg_gui_F.m.
- *
- * (same documentation you wrote; shortened here only for space - keep yours if you want)
+ * @brief Interactive epipolar-geometry viewer
  */
 
 #include <opencv2/opencv.hpp>
@@ -72,8 +70,6 @@ public:
         if (normalize) F1 = NormalizeFrobenius(F1);
         return EpipolarViewer(std::move(left), std::move(right), F1, std::move(windowName));
     }
-
-    // ========= Run =========
 
     void run() {
         cv::namedWindow(windowName_, cv::WINDOW_AUTOSIZE);
@@ -263,9 +259,6 @@ private:
     }
 };
 
-// -----------------------------------------------------------------------------
-// Small API wrapper (header-safe => must be inline)
-// -----------------------------------------------------------------------------
 
 enum class FConvention {
     Matlab_1Based,

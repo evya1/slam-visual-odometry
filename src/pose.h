@@ -4,18 +4,40 @@
 #include <opencv2/core.hpp>
 #include <opencv2/core/eigen.hpp>
 
+// Pose convention: camera -> world (T_w_c)
+//
+// We store a rigid transform that maps coordinates from the camera frame to the world frame:
+//
+//   x_w = R_wc * x_c + t_wc
+//
+// where R_wc ∈ SO(3) and t_wc ∈ R^3.
+//
+// Homogeneous form:
+//
+//   T_wc = [ R_wc  t_wc ]
+//          [  0      1  ]
+//
+// Camera center (camera position in world coordinates):
+// The camera center is the world coordinate of the camera-frame origin (x_c = 0):
+//
+//   C_w = t_wc
+//
+// (If using the opposite convention world -> camera: x_c = R_cw x_w + t_cw,
+//  then R_cw = R_wc^T, t_cw = -R_wc^T t_wc, and C_w = -R_cw^T t_cw.)
 class Pose {
 public:
-    cv::Mat R;      // R in SO(3)
-    cv::Mat t_vec;  // translation (3x1)
+    cv::Mat R; // R in SO(3)
+    cv::Mat t_vec; // translation (3x1)
 
     Pose()
         : R(cv::Mat::eye(3, 3, CV_64F)),
-          t_vec(cv::Mat::zeros(3, 1, CV_64F)) {}
+          t_vec(cv::Mat::zeros(3, 1, CV_64F)) {
+    }
 
-    Pose(const cv::Mat& r, const cv::Mat& t)
+    Pose(const cv::Mat &r, const cv::Mat &t)
         : R(r.clone()),
-          t_vec(t.clone()) {}
+          t_vec(t.clone()) {
+    }
 
     // transformation matrix (in SE(3)) as OpenCV Mat
     cv::Mat get_transformation_matrix() const {
@@ -25,7 +47,7 @@ public:
         return T;
     }
 
-    void set_from_transformation_matrix(const cv::Mat& T) {
+    void set_from_transformation_matrix(const cv::Mat &T) {
         T(cv::Rect(0, 0, 3, 3)).copyTo(R);
         T(cv::Rect(3, 0, 1, 3)).copyTo(t_vec);
     }
@@ -64,8 +86,8 @@ public:
         const Eigen::Vector3d twc = translation_eigen();
 
         Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-        T.topLeftCorner<3, 3>() = Rwc.transpose();            // Rcw
-        T.topRightCorner<3, 1>() = -Rwc.transpose() * twc;    // tcw
+        T.topLeftCorner<3, 3>() = Rwc.transpose(); // Rcw
+        T.topRightCorner<3, 1>() = -Rwc.transpose() * twc; // tcw
         return T;
     }
 

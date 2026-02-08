@@ -21,8 +21,8 @@ public:
 
     std::vector<cv::Mat> get_trajectory();
 
-    bool has_last_F() const { return has_last_F_; }
-    cv::Matx33d last_F() const { return last_F_; }
+    auto has_last_F() const -> bool { return has_last_F_; }
+    auto last_F() const -> cv::Matx33d { return last_F_; }
 
     std::vector<Pose> get_trajectory_poses();
 
@@ -32,12 +32,12 @@ private:
 
     void detect_features(Frame &frame);
 
-    void print_debugging_statistics(double min_dist, double max_dist, std::size_t num_matches, double mean_dist,
-                                    double median_dist, double threshold);
+    static void print_debugging_statistics(double min_dist, double max_dist, std::size_t num_matches, double mean_dist,
+                                           double median_dist, double threshold);
 
-    double get_mean_dist_ham(std::vector<cv::DMatch> matches);
+    static double get_mean_dist_ham(const std::vector<cv::DMatch> &matches);
 
-    double get_median_dist(std::vector<cv::DMatch> matches);
+    static double get_median_dist(std::vector<cv::DMatch> matches);
 
     std::vector<cv::DMatch> get_good_matches_of_features(const Frame &frame1, const Frame &frame2);
 

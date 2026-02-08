@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <iostream>
 #include <utility>
-#include <numeric>
 
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
@@ -77,7 +76,7 @@ void VisualOdometry::print_debugging_statistics(const double min_dist, const dou
             << "  (units: Hamming bits)\n";
 }
 
-double VisualOdometry::get_mean_dist_ham(std::vector<cv::DMatch> matches) {
+auto VisualOdometry::get_mean_dist_ham(const std::vector<cv::DMatch> &matches) -> double {
     double sum = 0.0;
     for (const auto &m: matches) sum += m.distance;
 
@@ -85,7 +84,7 @@ double VisualOdometry::get_mean_dist_ham(std::vector<cv::DMatch> matches) {
     return mean_dist;
 }
 
-double VisualOdometry::get_median_dist(std::vector<cv::DMatch> matches) {
+auto VisualOdometry::get_median_dist(std::vector<cv::DMatch> matches) -> double {
     const std::size_t median_index = matches.size() / 2;
     const double median_dist = matches[median_index].distance;
     return median_dist;
@@ -279,7 +278,7 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
         {
             std::lock_guard<std::mutex> lock(trajectory_mutex_);
             trajectory_positions_.push_back(frame.pose.get_position().clone());
-            trajectory_poses_.push_back(Pose(frame.pose.R.clone(), frame.pose.t_vec.clone()));
+            trajectory_poses_.emplace_back(frame.pose.R.clone(), frame.pose.t_vec.clone());
         }
         previous_frame_ = std::move(frame);
         initialized_ = true;
@@ -329,7 +328,7 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
     {
         std::lock_guard<std::mutex> lock(trajectory_mutex_);
         trajectory_positions_.push_back(frame.pose.get_position().clone());
-        trajectory_poses_.push_back(Pose(frame.pose.R.clone(), frame.pose.t_vec.clone()));
+        trajectory_poses_.emplace_back(frame.pose.R.clone(), frame.pose.t_vec.clone());
     }
 
     previous_frame_ = std::move(frame);

@@ -33,7 +33,7 @@ void TrajectoryViewer::init() {
     initialized_ = true;
 }
 
-bool TrajectoryViewer::should_quit() const {
+bool TrajectoryViewer::should_quit() {
     return pangolin::ShouldQuit();
 }
 

@@ -11,12 +11,9 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include <thread>
-#include <mutex>
 #include <chrono>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/features2d.hpp>
 #include <pangolin/pangolin.h>
 
 #include "frame.h"
@@ -40,7 +37,7 @@ std::vector<std::string> load_image_paths(const std::string &dataset_path) {
             std::string ext = entry.path().extension().string();
 
             // Convert extension to lowercase for comparison
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            std::transform(ext.begin(), ext.end(), ext.begin(), tolower);
 
             if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
                 image_paths.push_back(path);

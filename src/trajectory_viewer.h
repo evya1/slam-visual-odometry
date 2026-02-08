@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <opencv2/core.hpp>
 #include <pangolin/pangolin.h>
 
 #include "pose.h"
@@ -12,7 +11,7 @@ public:
 
     void init();
 
-    bool should_quit() const;
+    static bool should_quit();
 
     void render_step(const std::vector<Pose> &trajectory);
 
@@ -22,9 +21,9 @@ private:
     pangolin::OpenGlRenderState s_cam_;
     pangolin::View *d_cam_ = nullptr;
 
-    void draw_axes(float axis_display_length);
+    static void draw_axes(float axis_display_length);
 
-    void draw_grid();
+    static void draw_grid();
 
-    void draw_camera_axes_at_pose(const Pose &pose, float axis_len);
+    static void draw_camera_axes_at_pose(const Pose &pose, float axis_len);
 };

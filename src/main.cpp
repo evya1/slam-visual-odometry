@@ -25,66 +25,6 @@
 #include "visual_odometry.h"
 #include "epipolar_viewer.h"
 
-
-static cv::Matx33d estimate_fundamental_orb(const cv::Mat& img1_bgr, const cv::Mat& img2_bgr) {
-    cv::Mat img1, img2;
-    if (img1_bgr.channels() == 3) cv::cvtColor(img1_bgr, img1, cv::COLOR_BGR2GRAY);
-    else img1 = img1_bgr;
-    if (img2_bgr.channels() == 3) cv::cvtColor(img2_bgr, img2, cv::COLOR_BGR2GRAY);
-    else img2 = img2_bgr;
-
-    auto orb = cv::ORB::create(2000);
-
-    std::vector<cv::KeyPoint> k1, k2;
-    cv::Mat d1, d2;
-    orb->detectAndCompute(img1, cv::noArray(), k1, d1);
-    orb->detectAndCompute(img2, cv::noArray(), k2, d2);
-
-    if (d1.empty() || d2.empty()) {
-        throw std::runtime_error("estimate_fundamental_orb: ORB descriptors are empty.");
-    }
-
-    cv::BFMatcher matcher(cv::NORM_HAMMING, /*crossCheck=*/true);
-    std::vector<cv::DMatch> matches;
-    matcher.match(d1, d2, matches);
-
-    if (matches.size() < 8) {
-        throw std::runtime_error("estimate_fundamental_orb: not enough matches for F (need >= 8).");
-    }
-
-    std::sort(matches.begin(), matches.end(),
-              [](const cv::DMatch& a, const cv::DMatch& b) { return a.distance < b.distance; });
-
-    // Keep best N matches (helps stability)
-    const int keep = std::min<int>(matches.size(), 800);
-    matches.resize(keep);
-
-    std::vector<cv::Point2f> p1, p2;
-    p1.reserve(matches.size());
-    p2.reserve(matches.size());
-    for (const auto& m : matches) {
-        p1.push_back(k1[m.queryIdx].pt); // in img1
-        p2.push_back(k2[m.trainIdx].pt); // in img2
-    }
-
-    cv::Mat inlierMask;
-    cv::Mat F = cv::findFundamentalMat(p1, p2, cv::FM_RANSAC, 1.5, 0.99, inlierMask);
-    if (F.empty() || F.rows != 3 || F.cols != 3) {
-        throw std::runtime_error("estimate_fundamental_orb: findFundamentalMat failed.");
-    }
-
-    cv::Mat F64;
-    F.convertTo(F64, CV_64F);
-
-    cv::Matx33d Fcv;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            Fcv(r, c) = F64.at<double>(r, c);
-
-    return Fcv;
-}
-
-
 namespace fs = std::filesystem;
 
 // =============================================================================
@@ -98,7 +38,7 @@ std::vector<std::string> load_image_paths(const std::string& dataset_path) {
     for (const auto& entry : fs::directory_iterator(dataset_path)) {
         if (entry.is_regular_file()) {
             std::string path = entry.path().string();
-            std::string ext = entry.path().extension().string();
+            std::string ext  = entry.path().extension().string();
 
             // Convert extension to lowercase for comparison
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -113,7 +53,6 @@ std::vector<std::string> load_image_paths(const std::string& dataset_path) {
     std::sort(image_paths.begin(), image_paths.end());
 
     std::cout << "Found " << image_paths.size() << " images in dataset" << std::endl;
-
     return image_paths;
 }
 
@@ -170,36 +109,7 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // --- Epipolar viewer on first two frames (press ESC to close it and continue) ---
-    if (image_paths.size() >= 2) {
-        cv::Mat img0 = cv::imread(image_paths[0]);
-        cv::Mat img1 = cv::imread(image_paths[1]);
-
-        if (img0.empty() || img1.empty()) {
-            std::cerr << "Failed to load first two images for epipolar viewer.\n";
-        } else {
-            try {
-                cv::Matx33d F_from_opencv = estimate_fundamental_orb(img0, img1);
-
-                // IMPORTANT:
-                // OpenCV commonly returns F such that:   x2^T * F * x1 = 0
-                // Your viewer docs say it uses:          p1^T * F * p2 = 0
-                // So transpose before passing (unless you updated your viewer conversion to handle this).
-                cv::Matx33d F_for_viewer = F_from_opencv.t();
-
-                run_epipolar_viewer(img0, img1, F_for_viewer,
-                                    FConvention::OpenCV_0Based,
-                                    "Epipolar: frame0 vs frame1",
-                                    /*normalizeF=*/true);
-
-            } catch (const std::exception& e) {
-                std::cerr << "Epipolar viewer setup failed: " << e.what() << "\n";
-            }
-        }
-    }
-
-
-    int image_width = first_image.cols;
+    int image_width  = first_image.cols;
     int image_height = first_image.rows;
     std::cout << "Image dimensions: " << image_width << " x " << image_height << std::endl;
 
@@ -210,11 +120,8 @@ int main(int argc, char** argv) {
     TrajectoryViewer viewer;
     viewer.init();
 
-
     // Create OpenCV windows once
-    // cv::namedWindow("Visual Odometry: Frame", cv::WINDOW_NORMAL);
     cv::namedWindow("Visual Odometry: Keypoints", cv::WINDOW_NORMAL);
-    // cv::moveWindow("Visual Odometry: Frame", 50, 50);
     cv::moveWindow("Visual Odometry: Keypoints", 50, 500);
     cv::waitKey(1); // optional: forces window creation
 
@@ -224,6 +131,10 @@ int main(int argc, char** argv) {
 
     bool paused = false;
     int frame_delay = 30;  // ms between frames
+
+    // For epipolar viewer (frame0 vs frame1) using VO's computed F
+    cv::Mat prev_image;
+    bool shown_epipolar_once = false;
 
     for (size_t i = 0; i < image_paths.size(); ++i) {
         // Check if viewer is still running
@@ -258,8 +169,41 @@ int main(int argc, char** argv) {
         viewer.render_step(vo.get_trajectory());
 
         // Display images
-        // cv::imshow("Visual Odometry: Frame", image);
         cv::imshow("Visual Odometry: Keypoints", display_image);
+
+        // ---------------------------------------------------------------------
+        // Open Epipolar Viewer ONCE for the first pair (frame0, frame1),
+        // using the F computed by YOUR VO.
+        //
+        // Important convention note:
+        // - Your VO prints/derives F in OpenCV form:  x2^T * F * x1 = 0
+        // - Viewer expects:                           p1^T * F * p2 = 0
+        // These match by transpose: F_view = F_vo^T  (when left=frame0, right=frame1)
+        // ---------------------------------------------------------------------
+        if (!shown_epipolar_once && i == 1 && vo.has_last_F() && !prev_image.empty()) {
+            std::cout << "\n========== VO Fundamental Matrix ==========\n";
+            std::cout << "F from VO (OpenCV form: x2^T * F * x1 = 0):\n" << vo.last_F() << "\n";
+
+            // Convert to viewer convention: p1^T * F * p2 = 0  => transpose
+            cv::Matx33d F_for_viewer = vo.last_F().t();
+
+            std::cout << "\nF passed to viewer (transposed for p1^T * F * p2 = 0):\n"
+                      << F_for_viewer << "\n";
+            std::cout << "==========================================\n\n";
+
+            // This blocks until you close the epipolar window (ESC inside that window).
+            // After you close it, the VO loop continues.
+            run_epipolar_viewer(prev_image, image,
+                                F_for_viewer,
+                                FConvention::OpenCV_0Based,
+                                "Epipolar (VO F): frame0 vs frame1",
+                                /*normalizeF=*/true);
+
+            shown_epipolar_once = true;
+        }
+
+        // Update prev image for next iteration
+        prev_image = image.clone();
 
         // Handle keyboard input
         while (true) {
@@ -298,7 +242,6 @@ int main(int argc, char** argv) {
     std::cout << "Press any key to exit..." << std::endl;
 
     cv::waitKey(0);
-
     cv::destroyAllWindows();
 
     return 0;

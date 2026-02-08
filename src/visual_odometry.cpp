@@ -171,7 +171,9 @@ bool VisualOdometry::estimate_relative_pose(
     cv::Mat E64;
     E.convertTo(E64, CV_64F);
 
-    cv::Mat Kinv = camera_matrix_.inv();
+    cv::Mat K64;
+    camera_matrix_.convertTo(K64, CV_64F);
+    cv::Mat Kinv = K64.inv();
     cv::Mat F = Kinv.t() * E64 * Kinv; // F = K^{-T} * E * K^{-1}
 
     std::cout << "Fundamental matrix F (pixel coords, OpenCV convention x2^T F x1 = 0):\n"
@@ -182,16 +184,38 @@ bool VisualOdometry::estimate_relative_pose(
         for (int c = 0; c < 3; ++c)
             Fm(r, c) = F.at<double>(r, c);
 
-    last_F_ = Fm;
+    // Build Fm from current F
+    cv::Matx33d Fm_cur;
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            Fm_cur(r, c) = F.at<double>(r, c);
+
+    last_F_ = Fm_cur;
     has_last_F_ = true;
+
+    // compute epipolar residual with CURRENT F
+    double mean_abs = 0.0;
+    int cnt = 0;
+    for (size_t i = 0; i < points1.size(); ++i) {
+        if (!inlier_mask.empty() && !inlier_mask.at<uchar>((int)i)) continue;
+        cv::Vec3d x1(points1[i].x, points1[i].y, 1.0);
+        cv::Vec3d x2(points2[i].x, points2[i].y, 1.0);
+        mean_abs += std::abs(x2.dot(Fm_cur * x1));
+        cnt++;
+    }
+    if (cnt > 0) std::cout << "Mean |x2^T F x1| over inliers: " << (mean_abs / cnt) << "\n";
 
     const int inlier_count = cv::countNonZero(inlier_mask);
     std::cout << "Essential matrix computed with " << inlier_count << " inliers\n";
 
     const int valid_points = cv::recoverPose(E, points1, points2, camera_matrix_, R, t, inlier_mask);
 
-    if (valid_points < 15 || inlier_count < 25) {
-        std::cerr << "Not enough valid points after pose recovery: " << valid_points << "\n";
+    constexpr int kMinValidPoints = 10;
+    constexpr int kMinInliers = 12;
+
+    if (valid_points < kMinValidPoints || inlier_count < kMinInliers) {
+        std::cerr << "Not enough valid points after pose recovery: " << valid_points
+                  << " (inliers=" << inlier_count << ")\n";
         return false;
     }
 
@@ -266,23 +290,38 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
     const std::vector<cv::DMatch> matches =
         get_good_matches_of_features(previous_frame_, frame);
 
-    constexpr std::size_t kMinMatchesForPose = 5;
+    constexpr std::size_t kMinMatchesForPose = 10;
 
     if (matches.size() >= kMinMatchesForPose) {
         cv::Mat R_c2_c1, t_c2_c1;
-        if (estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1)) {
-            constexpr double kScale = 0.3;
+
+        // NOTE: we call it once, and use BOTH the return value and the produced R,t.
+        const bool pose_ok =
+            estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1);
+
+        // Even if pose_ok == false (e.g. low cheirality / low valid points),
+        // we still apply ROTATION-ONLY if we got a usable R,t.
+        if (!R_c2_c1.empty() && !t_c2_c1.empty()) {
+            constexpr double kScaleGood = 0.3;
+            const double scale = pose_ok ? kScaleGood : 0.0; // rotation-only when not ok
 
             cv::Mat R_c1_c2, t_c1_c2;
-            invert_relative_camera_to_camera_transform(R_c2_c1, t_c2_c1, R_c1_c2, t_c1_c2);
-
-            frame.pose = compose_next_camera_to_world_pose_from_inverse_relative_motion(
-                previous_frame_.pose, R_c1_c2, t_c1_c2, kScale
+            invert_relative_camera_to_camera_transform(
+                R_c2_c1, t_c2_c1, R_c1_c2, t_c1_c2
             );
 
-            print_camera_position_debug(frame.pose);
+            frame.pose = compose_next_camera_to_world_pose_from_inverse_relative_motion(
+                previous_frame_.pose, R_c1_c2, t_c1_c2, scale
+            );
+
+            // Optional debug:
+            std::cout << "[PoseUpdate] matches=" << matches.size()
+                      << " pose_ok=" << pose_ok
+                      << " scale=" << scale << "\n";
         }
     }
+
+    print_camera_position_debug(frame.pose);
 
     // Append trajectory every frame (even if pose didn't update)
     {
@@ -293,6 +332,7 @@ cv::Mat VisualOdometry::process_frame(Frame& frame) {
     previous_frame_ = std::move(frame);
     return display_image;
 }
+
 
 std::vector<cv::Mat> VisualOdometry::get_trajectory() {
     std::lock_guard<std::mutex> lock(trajectory_mutex_);

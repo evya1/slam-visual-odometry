@@ -24,4 +24,6 @@
  *
  * MVG camera matrix typically uses world->camera:
  *   P = K [R_cw | t_cw],  where R_cw = R_wc^T and t_cw = -R_wc^T t_wc.
+ *
+ *   Here (R,t) are the relative motion taking coordinates from camera1 to camera2: (X_2 = R X_1 + t).
  */

@@ -254,13 +254,13 @@ Pose compose_next_camera_to_world_pose_from_inverse_relative_motion(
     Pose out;
     // T_w_c2 = T_w_c1 * T_c1_c2
     out.R_wc = prev_pose.R_wc * R_c1_c2;
-    out.t_vec = prev_pose.t_vec + scale * (prev_pose.R_wc * t_c1_c2);
+    out.t_wc = prev_pose.t_wc + scale * (prev_pose.R_wc * t_c1_c2);
     return out;
 }
 
 void print_camera_position_debug(const Pose &pose) {
     // With T_wc convention, camera center in world coordinates is C_w = t_wc.
-    const cv::Mat pos = pose.get_position();
+    const cv::Mat pos = pose.C_w();
     std::cout << "Position: [" << pos.at<double>(0) << ", "
             << pos.at<double>(1) << ", "
             << pos.at<double>(2) << "]\n";
@@ -274,8 +274,8 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
         frame.pose = Pose(); // R_wc = I, t_wc = 0
         {
             std::lock_guard<std::mutex> lock(trajectory_mutex_);
-            trajectory_positions_.push_back(frame.pose.get_position().clone());
-            trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_vec.clone());
+            trajectory_positions_.push_back(frame.pose.C_w().clone());
+            trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_wc.clone());
         }
         previous_frame_ = std::move(frame);
         initialized_ = true;
@@ -315,8 +315,8 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
 
     {
         std::lock_guard<std::mutex> lock(trajectory_mutex_);
-        trajectory_positions_.push_back(frame.pose.get_position().clone());
-        trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_vec.clone());
+        trajectory_positions_.push_back(frame.pose.C_w().clone());
+        trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_wc.clone());
     }
 
     previous_frame_ = std::move(frame);

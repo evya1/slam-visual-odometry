@@ -108,7 +108,7 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
     {
         // DEBUG: identity pose (R_wc = I) shifted so it doesn't overlap the world axes.
         Pose p;
-        p.t_vec = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 1.0);
+        p.t_wc = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 1.0);
         draw_camera_axes_at_pose(p, 0.5f);
         draw_camera_frustum_at_pose(p, 0.4f);
     }
@@ -126,7 +126,7 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
 
         glBegin(GL_LINE_STRIP);
         for (const auto &p: trajectory) {
-            const cv::Mat pos = p.get_position();
+            const cv::Mat pos = p.C_w();
             glVertex3d(pos.at<double>(0), pos.at<double>(1), pos.at<double>(2));
         }
         glEnd();
@@ -136,7 +136,7 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
     glPointSize(5.0f);
     glBegin(GL_POINTS);
     for (size_t i = 0; i < trajectory.size(); ++i) {
-        const cv::Mat pos = trajectory[i].get_position();
+        const cv::Mat pos = trajectory[i].C_w();
         if (i == 0) glColor3f(1.0f, 0.0f, 0.0f); // start: red
         else if (i == trajectory.size() - 1) glColor3f(0.0f, 0.0f, 1.0f); // end: blue
         else glColor3f(0.0f, 1.0f, 0.0f); // middle: green
@@ -182,7 +182,7 @@ bool TrajectoryViewer::save_trajectory_screenshots(const std::vector<Pose> &traj
     cv::Vec3d mn(+1e30, +1e30, +1e30);
     cv::Vec3d mx(-1e30, -1e30, -1e30);
     for (const auto &p: trajectory) {
-        const cv::Vec3d v = mat3x1_to_vec3d(p.get_position());
+        const cv::Vec3d v = mat3x1_to_vec3d(p.C_w());
         mn[0] = std::min(mn[0], v[0]);
         mn[1] = std::min(mn[1], v[1]);
         mn[2] = std::min(mn[2], v[2]);
@@ -276,7 +276,7 @@ void TrajectoryViewer::draw_grid() {
 }
 
 void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len) {
-    const cv::Mat C = pose.get_position();
+    const cv::Mat C = pose.C_w();
     const double cx = C.at<double>(0);
     const double cy = C.at<double>(1);
     const double cz = C.at<double>(2);
@@ -314,14 +314,14 @@ void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len
 
 static cv::Vec3d cam_to_world(const Pose &pose, const cv::Vec3d &Xc) {
     // Xw = R_wc * Xc + t_wc
-    return cv::Vec3d(
+    return {
         pose.R_wc.at<double>(0, 0) * Xc[0] + pose.R_wc.at<double>(0, 1) * Xc[1] + pose.R_wc.at<double>(0, 2) * Xc[2] +
-        pose.t_vec.at<double>(0),
+        pose.t_wc.at<double>(0),
         pose.R_wc.at<double>(1, 0) * Xc[0] + pose.R_wc.at<double>(1, 1) * Xc[1] + pose.R_wc.at<double>(1, 2) * Xc[2] +
-        pose.t_vec.at<double>(1),
+        pose.t_wc.at<double>(1),
         pose.R_wc.at<double>(2, 0) * Xc[0] + pose.R_wc.at<double>(2, 1) * Xc[1] + pose.R_wc.at<double>(2, 2) * Xc[2] +
-        pose.t_vec.at<double>(2)
-    );
+        pose.t_wc.at<double>(2)
+    };
 }
 
 void TrajectoryViewer::draw_camera_frustum_at_pose(const Pose &pose, float scale) {
@@ -337,11 +337,11 @@ void TrajectoryViewer::draw_camera_frustum_at_pose(const Pose &pose, float scale
     const cv::Vec3d C3(+hw, +hh, -d);
     const cv::Vec3d C4(-hw, +hh, -d);
 
-    const cv::Vec3d Ow = cam_to_world(pose, O);
-    const cv::Vec3d P1w = cam_to_world(pose, C1);
-    const cv::Vec3d P2w = cam_to_world(pose, C2);
-    const cv::Vec3d P3w = cam_to_world(pose, C3);
-    const cv::Vec3d P4w = cam_to_world(pose, C4);
+    const auto Ow = cam_to_world(pose, O);
+    const auto P1w = cam_to_world(pose, C1);
+    const auto P2w = cam_to_world(pose, C2);
+    const auto P3w = cam_to_world(pose, C3);
+    const auto P4w = cam_to_world(pose, C4);
 
     glLineWidth(1.5f);
     glColor3f(1.0f, 1.0f, 0.0f); // yellow frustum

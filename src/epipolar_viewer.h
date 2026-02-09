@@ -16,13 +16,9 @@
  * Epipolar geometry (MVG2e §9.2):
  *   Standard form: x2^T F x1 = 0, with l2 = F x1 and l1 = F^T x2.
  *
- * IMPORTANT (this viewer's convention):
- *   This implementation follows the MATLAB vgg_gui_F ordering:
- *     p1^T F p2 = 0
- *   where p1 is in the LEFT image and p2 in the RIGHT image.
- *   Therefore:
- *     - If you click p1 (LEFT), the epipolar line in RIGHT is l2 = F^T p1.
- *     - If you click p2 (RIGHT), the epipolar line in LEFT  is l1 = F p2.
+ * Viewer convention (matches OpenCV/MVG):
+ * LEFT image is image1 (x1), RIGHT image is image2 (x2):
+ * x2^T F x1 = 0,  l_right = F x_left,  l_left = F^T x_right.
  *
  * 0-based vs 1-based pixels:
  *   OpenCV mouse coordinates are 0-based; MATLAB is typically 1-based.
@@ -170,8 +166,8 @@ private:
     }
 
     cv::Vec3d computeEpipolarLineInOtherImage(Side clickedSide, const cv::Vec3d &p_clicked) const {
-        if (clickedSide == Side::Left) return Ft_ * p_clicked;
-        if (clickedSide == Side::Right) return F_ * p_clicked;
+        if (clickedSide == Side::Left) return F_ * p_clicked;   // l2 = F x1
+        if (clickedSide == Side::Right) return Ft_ * p_clicked; // l1 = F^T x2
         return {0, 0, 0};
     }
 

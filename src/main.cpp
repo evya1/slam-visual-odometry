@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
             std::cout << "F from VO (OpenCV form: x2^T * F * x1 = 0):\n" << vo.last_F() << "\n";
 
             // Convert to viewer convention (swap p1/p2 via transpose)
-            cv::Matx33d F_for_viewer = vo.last_F().t();
+            cv::Matx33d F_for_viewer = vo.last_F();
 
             std::cout << "\nF passed to viewer (transposed for p1^T * F * p2 = 0):\n"
                     << F_for_viewer << "\n";

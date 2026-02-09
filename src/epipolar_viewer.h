@@ -96,7 +96,7 @@ public:
         showCanvas(canvasBase_);
 
         while (true) {
-            int key = cv::waitKey(20);
+            const int key = cv::waitKey(20);
             if (key == 27) break; // ESC
             if (key != -1) handleKey(key);
         }
@@ -162,7 +162,7 @@ private:
     int xShiftFor(Side side) const { return side == Side::Right ? wL_ : 0; }
 
     cv::Point2d canvasToLocal0Based(Side side, int canvasX, int canvasY) const {
-        return {double(canvasX - xShiftFor(side)), double(canvasY)};
+        return {static_cast<double>(canvasX - xShiftFor(side)), static_cast<double>(canvasY)};
     }
 
     static cv::Vec3d toMatlabHomog1Based(const cv::Point2d &p0) {
@@ -180,7 +180,7 @@ private:
         std::vector<cv::Point2d> pts;
 
         auto add_if_inside = [&](double x, double y) {
-            if (x >= 1.0 && x <= (double) w && y >= 1.0 && y <= (double) h) pts.emplace_back(x, y);
+            if (x >= 1.0 && x <= static_cast<double>(w) && y >= 1.0 && y <= static_cast<double>(h)) pts.emplace_back(x, y);
         };
 
         if (std::abs(b) > eps) {
@@ -214,9 +214,9 @@ private:
 
     void resetDrawLayer() { canvasDraw_ = canvasBase_.clone(); }
 
-    void drawPointMarker(Side side, const cv::Point2d &pLocal0) {
-        cv::Point pCanvas((int) std::lround(pLocal0.x + xShiftFor(side)),
-                          (int) std::lround(pLocal0.y));
+    void drawPointMarker(const Side side, const cv::Point2d &pLocal0) {
+        cv::Point pCanvas(static_cast<int>(std::lround(pLocal0.x + xShiftFor(side))),
+                          static_cast<int>(std::lround(pLocal0.y)));
         cv::drawMarker(canvasDraw_, pCanvas, color_, cv::MARKER_CROSS, 14, thickness_);
     }
 
@@ -227,11 +227,17 @@ private:
     }
 
     void updateOverlayFromMouse(Side draggedSide, int canvasX, int canvasY) {
-        cv::Point2d pLocal0 = canvasToLocal0Based(draggedSide, canvasX, canvasY);
-        cv::Vec3d pMat = toMatlabHomog1Based(pLocal0);
+        cv::Point2d pLocal0;
+        cv::Vec3d lOther;
+        Side lineSide;
 
-        cv::Vec3d lOther = computeEpipolarLineInOtherImage(draggedSide, pMat);
-        Side lineSide = (draggedSide == Side::Left) ? Side::Right : Side::Left;
+        pLocal0 = canvasToLocal0Based(draggedSide, canvasX, canvasY);
+
+        cv::Vec<double, 3> pMat = toMatlabHomog1Based(pLocal0);
+
+        lOther = computeEpipolarLineInOtherImage(draggedSide, pMat);
+
+        lineSide = (draggedSide == Side::Left) ? Side::Right : Side::Left;
 
         int w = lineSide == Side::Left ? wL_ : wR_;
         int h = lineSide == Side::Left ? hL_ : hR_;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include <string>
+
 #include <pangolin/pangolin.h>
 
 #include "pose.h"
@@ -15,6 +17,8 @@ public:
 
     void render_step(const std::vector<Pose> &trajectory);
     static void draw_camera_frustum_at_pose(const Pose &pose, float scale);
+    bool save_trajectory_screenshots(const std::vector<Pose> &trajectory,
+                                     const std::string &out_dir = "trajectory_screenshots");
 
 private:
     bool initialized_ = false;

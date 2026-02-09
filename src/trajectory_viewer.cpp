@@ -7,6 +7,63 @@
 #include <GL/gl.h>
 #endif
 
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <iostream>
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+
+namespace {
+    cv::Vec3d mat3x1_to_vec3d(const cv::Mat &m) {
+        return {m.at<double>(0), m.at<double>(1), m.at<double>(2)};
+    }
+
+    double norm3(const cv::Vec3d &v) {
+        return std::sqrt(v.dot(v));
+    }
+
+    cv::Vec3d normalize_or_fallback(const cv::Vec3d &v, const cv::Vec3d &fallback) {
+        const double n = norm3(v);
+        if (n < 1e-12) return fallback;
+        return (1.0 / n) * v;
+    }
+
+    bool save_bound_window_jpeg(const std::string &filepath) {
+        GLint viewport[4] = {0, 0, 0, 0};
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        const int w = viewport[2];
+        const int h = viewport[3];
+
+        if (w <= 0 || h <= 0) {
+            std::cerr << "[TrajectoryViewer] Invalid GL viewport for screenshot: "
+                    << w << "x" << h << "\n";
+            return false;
+        }
+
+        cv::Mat rgb(h, w, CV_8UC3);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+        // After pangolin::FinishFrame(), the rendered image is in the front buffer.
+        glReadBuffer(GL_FRONT);
+        glFinish();
+        glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, rgb.data);
+
+        cv::Mat bgr;
+        cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+        cv::flip(bgr, bgr, 0); // OpenGL origin is bottom-left
+
+        const std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 95};
+        const bool ok = cv::imwrite(filepath, bgr, params);
+        if (!ok) {
+            std::cerr << "[TrajectoryViewer] Failed to write screenshot: " << filepath << "\n";
+            return false;
+        }
+        return true;
+    }
+} // namespace
+
 void TrajectoryViewer::init() {
     if (initialized_) return;
 
@@ -17,7 +74,6 @@ void TrajectoryViewer::init() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     const float k = 0.1f;
-
 
     const float eye_x = +2.0f * k; // camera right => scene shifts left
     s_cam_ = pangolin::OpenGlRenderState(
@@ -107,6 +163,88 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
     pangolin::FinishFrame();
 }
 
+bool TrajectoryViewer::save_trajectory_screenshots(const std::vector<Pose> &trajectory,
+                                                   const std::string &out_dir) {
+    init();
+
+    if (TrajectoryViewer::should_quit()) {
+        std::cerr << "[TrajectoryViewer] Pangolin window already closed; cannot screenshot.\n";
+        return false;
+    }
+    if (trajectory.empty()) {
+        std::cerr << "[TrajectoryViewer] Empty trajectory; nothing to screenshot.\n";
+        return false;
+    }
+
+    std::filesystem::create_directories(out_dir);
+
+    // Compute bbox -> choose a camera distance that likely fits everything.
+    cv::Vec3d mn(+1e30, +1e30, +1e30);
+    cv::Vec3d mx(-1e30, -1e30, -1e30);
+    for (const auto &p: trajectory) {
+        const cv::Vec3d v = mat3x1_to_vec3d(p.get_position());
+        mn[0] = std::min(mn[0], v[0]);
+        mn[1] = std::min(mn[1], v[1]);
+        mn[2] = std::min(mn[2], v[2]);
+        mx[0] = std::max(mx[0], v[0]);
+        mx[1] = std::max(mx[1], v[1]);
+        mx[2] = std::max(mx[2], v[2]);
+    }
+
+    const cv::Vec3d center = 0.5 * (mn + mx);
+    const double extent = std::max({mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]});
+    const double dist = std::max(2.5 * extent, 1.0);
+
+    const pangolin::OpenGlMatrix orig_mv = s_cam_.GetModelViewMatrix();
+
+    struct ViewSpec {
+        const char *tag;
+        cv::Vec3d dir;
+        pangolin::AxisDirection up;
+    };
+
+    // For ±Y views, avoid collinearity between view-dir and "up" by using Z-up there.
+    const std::vector<ViewSpec> views = {
+        {"posX", cv::Vec3d(+1, 0, 0), pangolin::AxisNegY},
+        {"negX", cv::Vec3d(-1, 0, 0), pangolin::AxisNegY},
+        {"posY", cv::Vec3d(0, +1, 0), pangolin::AxisZ},
+        {"negY", cv::Vec3d(0, -1, 0), pangolin::AxisZ},
+        {"posZ", cv::Vec3d(0, 0, +1), pangolin::AxisNegY},
+        {"negZ", cv::Vec3d(0, 0, -1), pangolin::AxisNegY},
+        {"iso", cv::Vec3d(+1, -1, -1), pangolin::AxisNegY},
+    };
+
+    bool all_ok = true;
+
+    for (const auto &v: views) {
+        const cv::Vec3d dir = normalize_or_fallback(v.dir, cv::Vec3d(0, 0, -1));
+        const cv::Vec3d eye = center + dist * dir;
+
+        s_cam_.SetModelViewMatrix(
+            pangolin::ModelViewLookAt(
+                eye[0], eye[1], eye[2],
+                center[0], center[1], center[2],
+                v.up
+            )
+        );
+
+        // Render with this camera pose
+        render_step(trajectory);
+
+        const std::filesystem::path out_path =
+                std::filesystem::path(out_dir) /
+                (std::string("trajectory_view_from_") + v.tag + ".jpg");
+
+        all_ok = all_ok && save_bound_window_jpeg(out_path.string());
+    }
+
+    // Restore interactive view
+    s_cam_.SetModelViewMatrix(orig_mv);
+    render_step(trajectory);
+
+    return all_ok;
+}
+
 void TrajectoryViewer::draw_axes(float axis_display_length) {
     glLineWidth(2.0f);
     glBegin(GL_LINES);
@@ -143,7 +281,6 @@ void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len
     const double cy = C.at<double>(1);
     const double cz = C.at<double>(2);
 
-
     // Camera axes in world coords are the columns of R_wc.
     // For visualization, we draw "forward" as -Z_c (OpenGL-style), hence the minus.
     const cv::Vec3d xw(pose.R_wc.at<double>(0, 0), pose.R_wc.at<double>(1, 0), pose.R_wc.at<double>(2, 0));
@@ -153,7 +290,6 @@ void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len
         pose.R_wc.at<double>(1, 2),
         pose.R_wc.at<double>(2, 2)
     );
-
 
     glLineWidth(3.0f);
     glBegin(GL_LINES);
@@ -168,13 +304,13 @@ void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len
     glVertex3d(cx, cy, cz);
     glVertex3d(cx + axis_len * yw[0], cy + axis_len * yw[1], cz + axis_len * yw[2]);
 
+    // Z axis (blue)  [visual forward is -Zc, already built into zw]
     glColor3f(0.0f, 0.0f, 1.0f);
     glVertex3d(cx, cy, cz);
     glVertex3d(cx + axis_len * zw[0], cy + axis_len * zw[1], cz + axis_len * zw[2]);
 
     glEnd();
 }
-
 
 static cv::Vec3d cam_to_world(const Pose &pose, const cv::Vec3d &Xc) {
     // Xw = R_wc * Xc + t_wc
@@ -234,4 +370,3 @@ void TrajectoryViewer::draw_camera_frustum_at_pose(const Pose &pose, float scale
 
     glEnd();
 }
-

@@ -237,6 +237,22 @@ int main(int argc, char **argv) {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // NEW: Save screenshots after processing ends (as long as Pangolin is open)
+    // -------------------------------------------------------------------------
+    {
+        const std::string out_dir = dataset_path + "/trajectory_screenshots";
+        if (!viewer.should_quit()) {
+            const bool ok = viewer.save_trajectory_screenshots(vo.get_trajectory_poses(), out_dir);
+            std::cout << (ok
+                ? ("Saved trajectory screenshots to: " + out_dir)
+                : ("Failed to save trajectory screenshots to: " + out_dir))
+                << std::endl;
+        } else {
+            std::cout << "Viewer already closed; skipping screenshots." << std::endl;
+        }
+    }
+
     std::cout << "\n========================================" << std::endl;
     std::cout << "Processing complete!" << std::endl;
     std::cout << "Total frames processed: " << image_paths.size() << std::endl;

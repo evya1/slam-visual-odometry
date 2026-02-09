@@ -46,7 +46,7 @@ public:
 
         R.convertTo(R_wc, CV_64F);
 
-        cv::Mat t_col = (t.rows == 3) ? t : t.t(); // ensure 3x1
+        cv::Mat t_col = (t.rows == 3) ? t : t.t(); // ensuring 3x1
         t_col.convertTo(t_wc, CV_64F);
     }
 
@@ -57,7 +57,7 @@ public:
         return T;
     }
 
-    // World -> camera (MVG extrinsics form)
+    // World -> camera (MVG extrinsic form)
     cv::Mat R_cw() const { return R_wc.t(); }
 
     cv::Mat t_cw() const {
@@ -74,5 +74,5 @@ public:
         return T;
     }
 
-    const cv::Mat &C_w() const { return t_wc; } // camera center in world
+    const cv::Mat &C_w() const { return t_wc; } // camera centre in world coordinates
 };

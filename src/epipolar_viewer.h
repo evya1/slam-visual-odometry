@@ -3,30 +3,16 @@
 #include <opencv2/opencv.hpp>
 #include <optional>
 #include <vector>
-#include <cmath>
 #include <iostream>
 #include <algorithm>
 #include <string>
 #include <stdexcept>
 
 /**
+ * @class EpipolarViewer
  * @file epipolar_viewer.h
  * @brief Interactive epipolar-geometry viewer for two images.
- *
- * Epipolar geometry (MVG2e §9.2):
- *   Standard form: x2^T F x1 = 0, with l2 = F x1 and l1 = F^T x2.
- *
- * Viewer convention (matches OpenCV/MVG):
- * LEFT image is image1 (x1), RIGHT image is image2 (x2):
- * x2^T F x1 = 0,  l_right = F x_left,  l_left = F^T x_right.
- *
- * 0-based vs 1-based pixels:
- *   OpenCV mouse coordinates are 0-based; MATLAB is typically 1-based.
- *   We convert using x_1based = T x_0based with T = [[1,0,1],[0,1,1],[0,0,1]] and
- *   F transforms as F' = T^{-T} F T^{-1}.
- *
  * @see geometry_conventions.h
- * @see MVG2e Ch. 9 (F/E) and Ch. 11 (normalization, residuals).
  */
 class EpipolarViewer {
 public:
@@ -39,15 +25,13 @@ public:
           windowName_(std::move(windowName)) {
         validateInputsOrThrow();
 
-        color_ = cv::Scalar(0, 0, 255); // red (BGR)
+        color_ = cv::Scalar(0, 0, 255);
         thickness_ = 2;
         activeSide_ = Side::None;
 
         computeSizes();
         buildCanvasBase();
     }
-
-    // ========= Fundamental-matrix conversion helpers =========
 
     static cv::Matx33d MakeOneBasedShiftMatrix() {
         return {1, 0, 1,
@@ -58,12 +42,12 @@ public:
     static cv::Matx33d ConvertF_0BasedTo1Based(const cv::Matx33d &F0) {
         const cv::Matx33d T = MakeOneBasedShiftMatrix();
         const cv::Matx33d Tinv = T.inv();
-        return Tinv.t() * F0 * Tinv; // T^{-T} * F0 * T^{-1}
+        return Tinv.t() * F0 * Tinv;
     }
 
     static cv::Matx33d ConvertF_1BasedTo0Based(const cv::Matx33d &F1) {
         const cv::Matx33d T = MakeOneBasedShiftMatrix();
-        return T.t() * F1 * T; // T^{T} * F1 * T
+        return T.t() * F1 * T;
     }
 
     static cv::Matx33d NormalizeFrobenius(const cv::Matx33d &F) {
@@ -82,7 +66,7 @@ public:
                                                   bool normalize = false) {
         cv::Matx33d F1 = ConvertF_0BasedTo1Based(F0);
         if (normalize) F1 = NormalizeFrobenius(F1);
-        return EpipolarViewer(std::move(left), std::move(right), F1, std::move(windowName));
+        return {std::move(left), std::move(right), F1, std::move(windowName)};
     }
 
     void run() {
@@ -93,7 +77,7 @@ public:
 
         while (true) {
             const int key = cv::waitKey(20);
-            if (key == 27) break; // ESC
+            if (key == 27) break;           // press ESC
             if (key != -1) handleKey(key);
         }
     }
@@ -281,7 +265,7 @@ private:
     }
 
     static void mouseThunk(int event, int x, int y, int flags, void *userdata) {
-        auto *self = reinterpret_cast<EpipolarViewer *>(userdata);
+        auto *self = static_cast<EpipolarViewer *>(userdata);
         self->handleMouse(event, x, y, flags);
     }
 };

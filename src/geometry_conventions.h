@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file geometry_conventions.h
- * @brief Project-wide conventions (aligned with MVG2e Ch. 9–12).
+ * @brief Project-wide conventions (attempted to align with MVG2e Ch. 9–12).
  *
  * ---- Image points (homogeneous) ----
  * Pixel point in OpenCV coordinates:

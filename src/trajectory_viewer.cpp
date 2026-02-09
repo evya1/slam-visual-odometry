@@ -8,7 +8,6 @@
 #endif
 
 #include <algorithm>
-#include <cmath>
 #include <filesystem>
 #include <iostream>
 
@@ -62,7 +61,7 @@ namespace {
         }
         return true;
     }
-} // namespace
+}
 
 void TrajectoryViewer::init() {
     if (initialized_) return;
@@ -104,16 +103,6 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
     draw_axes(0.5f);
     draw_grid();
 
-#if 0
-    {
-        // DEBUG: identity pose (R_wc = I) shifted so it doesn't overlap the world axes.
-        Pose p;
-        p.t_wc = (cv::Mat_<double>(3, 1) << 0.0, 0.0, 1.0);
-        draw_camera_axes_at_pose(p, 0.5f);
-        draw_camera_frustum_at_pose(p, 0.4f);
-    }
-#endif
-
     if (trajectory.empty()) {
         pangolin::FinishFrame();
         return;
@@ -126,7 +115,7 @@ void TrajectoryViewer::render_step(const std::vector<Pose> &trajectory) {
 
         glBegin(GL_LINE_STRIP);
         for (const auto &p: trajectory) {
-            const cv::Mat pos = p.C_w();
+            const cv::Mat& pos = p.C_w();
             glVertex3d(pos.at<double>(0), pos.at<double>(1), pos.at<double>(2));
         }
         glEnd();
@@ -178,7 +167,6 @@ bool TrajectoryViewer::save_trajectory_screenshots(const std::vector<Pose> &traj
 
     std::filesystem::create_directories(out_dir);
 
-    // Compute bbox -> choose a camera distance that likely fits everything.
     cv::Vec3d mn(+1e30, +1e30, +1e30);
     cv::Vec3d mx(-1e30, -1e30, -1e30);
     for (const auto &p: trajectory) {
@@ -203,7 +191,6 @@ bool TrajectoryViewer::save_trajectory_screenshots(const std::vector<Pose> &traj
         pangolin::AxisDirection up;
     };
 
-    // For ±Y views, avoid collinearity between view-dir and "up" by using Z-up there.
     const std::vector<ViewSpec> views = {
         {"posX", cv::Vec3d(+1, 0, 0), pangolin::AxisNegY},
         {"negX", cv::Vec3d(-1, 0, 0), pangolin::AxisNegY},
@@ -276,7 +263,7 @@ void TrajectoryViewer::draw_grid() {
 }
 
 void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len) {
-    const cv::Mat C = pose.C_w();
+    const cv::Mat& C = pose.C_w();
     const double cx = C.at<double>(0);
     const double cy = C.at<double>(1);
     const double cz = C.at<double>(2);
@@ -313,7 +300,6 @@ void TrajectoryViewer::draw_camera_axes_at_pose(const Pose &pose, float axis_len
 }
 
 static cv::Vec3d cam_to_world(const Pose &pose, const cv::Vec3d &Xc) {
-    // Xw = R_wc * Xc + t_wc
     return {
         pose.R_wc.at<double>(0, 0) * Xc[0] + pose.R_wc.at<double>(0, 1) * Xc[1] + pose.R_wc.at<double>(0, 2) * Xc[2] +
         pose.t_wc.at<double>(0),

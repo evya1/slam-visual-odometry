@@ -23,7 +23,7 @@
  *       F = K^{-T} E K^{-1}.
  *  6) Compose into world trajectory using project pose convention T_wc.
  *
- * Important: monocular translation scale is unobservable (MVG2e §10.2),
+ * Important: monocular translation scale is unobservable,
  * so this implementation applies a fixed visualization scale.
  *
  * @see geometry_conventions.h
@@ -37,7 +37,7 @@ public:
      *
      * Side effects:
      *  - Detects features into frame.keypoints/descriptors.
-     *  - Writes frame.pose as T_wc (camera->world).
+     *  - Writes frame.Pose as T_wc (camera->world).
      *  - Updates internal previous frame and stored trajectory.
      *
      * @return An OpenCV image for display (current frame with keypoint overlay).
@@ -47,7 +47,7 @@ public:
     std::vector<cv::Mat> get_trajectory();
 
     /**
-     * @brief True iff we computed F for the most recent successful pair.
+     * @brief True <==> we computed F for the most recent successful pair.
      */
     auto has_last_F() const -> bool;
 
@@ -62,7 +62,6 @@ public:
      * @see MVG2e §9.2 (F) and §9.6 (relation to E).
      */
     auto last_F() const -> cv::Matx33d;
-
 
     std::vector<Pose> get_trajectory_poses();
 
@@ -82,7 +81,7 @@ private:
     std::vector<cv::DMatch> get_good_matches_of_features(const Frame &frame1, const Frame &frame2);
 
     /**
-     * @brief Estimate relative motion between two frames from matches using E (MVG2e §9.6).
+     * @brief Estimate relative motion between two frames from matches using Essential Matrix.
      *
      * Inputs:
      *  - frame1 = previous frame (i-1), frame2 = current frame (i)

@@ -1,12 +1,65 @@
 #include "visual_odometry.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
+#include <limits>
+#include <mutex>
 #include <utility>
+#include <vector>
 
 #include <opencv2/calib3d.hpp>
-#include <opencv2/imgproc.hpp>
 #include <opencv2/features2d.hpp>
+#include <opencv2/imgproc.hpp>
+
+namespace {
+    // Distance (in pixels) from point x=(u,v) to line l=(a,b,c) with a*u + b*v + c = 0.
+    double pointLineDistancePx(const cv::Vec3d &l, const cv::Point2f &x) {
+        const double a = l[0], b = l[1], c = l[2];
+        const double num = std::abs(a * x.x + b * x.y + c);
+        const double den = std::sqrt(a * a + b * b);
+        return (den > 1e-12) ? (num / den) : std::numeric_limits<double>::infinity();
+    }
+
+    // Sanity-check: for inlier matches (x1_i, x2_i), compute dist(x2_i, l2_i) where l2_i = F * x1_i.
+    // If F and ordering are correct, this should be small (often ~1–3 px, depending on noise/thresholds).
+    void debugEpipolarResidualsPx(const cv::Matx33d &F,
+                                  const std::vector<cv::Point2f> &points1,
+                                  const std::vector<cv::Point2f> &points2,
+                                  const cv::Mat &inlier_mask,
+                                  int maxPrint = 10) {
+        int printed = 0;
+        double sum = 0.0, maxd = 0.0;
+        int cnt = 0;
+
+        const bool hasMask = !inlier_mask.empty() && inlier_mask.type() == CV_8U;
+
+        const int N = static_cast<int>(std::min(points1.size(), points2.size()));
+        for (int i = 0; i < N; ++i) {
+            if (hasMask && inlier_mask.at<uchar>(i) == 0) continue;
+
+            const cv::Vec3d x1(points1[i].x, points1[i].y, 1.0);
+            const cv::Vec3d l2 = F * x1; // l2 = F x1
+            const double d = pointLineDistancePx(l2, points2[i]); // dist(x2, l2)
+
+            sum += d;
+            maxd = std::max(maxd, d);
+            ++cnt;
+
+            if (printed < maxPrint) {
+                std::cout << "[epi] inlier " << i << "  d(x2, F x1) = " << d << " px\n";
+                ++printed;
+            }
+        }
+
+        if (cnt > 0) {
+            std::cout << "[epi] inlier residuals: mean=" << (sum / cnt)
+                    << " px, max=" << maxd << " px, N=" << cnt << "\n";
+        } else {
+            std::cout << "[epi] no inliers to check.\n";
+        }
+    }
+} // namespace
 
 VisualOdometry::VisualOdometry(int image_width, int image_height) {
     constexpr int kOrbMaxFeatures = 1200;
@@ -34,11 +87,10 @@ VisualOdometry::VisualOdometry(int image_width, int image_height) {
     matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
 
     // Intrinsics (K) used for calibrated two-view geometry.
-    // NOTE: This is a heuristic placeholder based on image size; replace with real calibration.
-    const double fx = static_cast<double>(image_width); // focal length in pixels (heuristic)
-    const double fy = static_cast<double>(image_width); // assume square pixels (heuristic)
-    const double cx = image_width / 2.0;
-    const double cy = image_height / 2.0;
+    const auto fx = static_cast<double>(image_width); // focal length in pixels
+    const auto fy = static_cast<double>(image_width); // assume square pixels
+    const auto cx = image_width / 2.0;
+    const auto cy = image_height / 2.0;
 
     camera_matrix_ = (cv::Mat_<double>(3, 3) <<
                       fx, 0, cx,
@@ -197,7 +249,10 @@ bool VisualOdometry::estimate_relative_pose(
     double mean_abs = 0.0;
     int cnt = 0;
     for (size_t i = 0; i < points1.size(); ++i) {
-        if (!inlier_mask.empty() && !inlier_mask.at<uchar>(static_cast<int>(i))) continue;
+        if (!inlier_mask.empty() && inlier_mask.type() == CV_8U &&
+            !inlier_mask.at<uchar>(static_cast<int>(i))) {
+            continue;
+        }
         const cv::Vec3d x1(points1[i].x, points1[i].y, 1.0);
         const cv::Vec3d x2(points2[i].x, points2[i].y, 1.0);
         mean_abs += std::abs(x2.dot(F_px * x1));
@@ -259,8 +314,7 @@ Pose compose_next_camera_to_world_pose_from_inverse_relative_motion(
 }
 
 void print_camera_position_debug(const Pose &pose) {
-    // With T_wc convention, camera center in world coordinates is C_w = t_wc.
-    const cv::Mat pos = pose.C_w();
+    const cv::Mat& pos = pose.C_w();
     std::cout << "Position: [" << pos.at<double>(0) << ", "
             << pos.at<double>(1) << ", "
             << pos.at<double>(2) << "]\n";
@@ -293,7 +347,7 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
 
         const bool pose_ok = estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1);
 
-        // If pose_ok is false, we still apply rotation-only (translation scale set to 0).
+        // If pose_ok is false, we still apply rotation-only (translation set to 0).
         if (!R_c2_c1.empty() && !t_c2_c1.empty()) {
             constexpr double kScaleGood = 0.3;
             const double scale = pose_ok ? kScaleGood : 0.0;
@@ -333,7 +387,5 @@ std::vector<Pose> VisualOdometry::get_trajectory_poses() {
     return trajectory_poses_;
 }
 
-// If visual_odometry.h declares these as out-of-line methods, define them here.
 auto VisualOdometry::has_last_F() const -> bool { return has_last_F_; }
 auto VisualOdometry::last_F() const -> cv::Matx33d { return last_F_; }
-

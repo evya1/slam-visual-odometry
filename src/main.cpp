@@ -19,15 +19,10 @@
 #include "frame.h"
 #include "trajectory_viewer.h"
 #include "visual_odometry.h"
-#include "epipolar_viewer.h"
 
 namespace fs = std::filesystem;
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-// Load image paths from dataset directory (sorted lexicographically)
+// Load image paths from dataset directory
 std::vector<std::string> load_image_paths(const std::string &dataset_path) {
     std::vector<std::string> image_paths;
 
@@ -129,9 +124,6 @@ int main(int argc, char **argv) {
     bool paused = false;
     int frame_delay = 30; // ms between frames
 
-    // For epipolar viewer (frame0 vs frame1) using VO's computed F
-    cv::Mat prev_image;
-    bool shown_epipolar_once = false;
 
     for (size_t i = 0; i < image_paths.size(); ++i) {
         // Check if viewer is still running
@@ -168,42 +160,6 @@ int main(int argc, char **argv) {
         // Display images
         cv::imshow("Visual Odometry: Keypoints", display_image);
 
-        // ---------------------------------------------------------------------
-        // Open Epipolar Viewer ONCE for the first pair (frame0, frame1),
-        // using the F computed by YOUR VO.
-        //
-        // Important convention note:
-        // - Your VO derives/prints F in OpenCV form: x2^T * F * x1 = 0
-        // - Viewer expects:                          p1^T * F * p2 = 0
-        // So: F_for_viewer = F_vo^T  (when left=frame0, right=frame1)
-        //
-        // conv=OpenCV_0Based means: your coordinates are 0-based pixels (OpenCV mouse coords).
-        // The viewer will internally convert to its 1-based convention.
-        // ---------------------------------------------------------------------
-        if (!shown_epipolar_once && i == 1 && vo.has_last_F() && !prev_image.empty()) {
-            std::cout << "\n========== VO Fundamental Matrix ==========\n";
-            std::cout << "F from VO (OpenCV form: x2^T * F * x1 = 0):\n" << vo.last_F() << "\n";
-
-            // Convert to viewer convention (swap p1/p2 via transpose)
-            cv::Matx33d F_for_viewer = vo.last_F();
-
-            std::cout << "\nF passed to viewer (transposed for p1^T * F * p2 = 0):\n"
-                    << F_for_viewer << "\n";
-            std::cout << "==========================================\n\n";
-
-            // Blocks until you close the epipolar window (ESC inside that window).
-            run_epipolar_viewer(prev_image, image,
-                                F_for_viewer,
-                                FConvention::OpenCV_0Based,
-                                "Epipolar (VO F): frame0 vs frame1",
-                                /*normalizeF=*/true);
-
-            shown_epipolar_once = true;
-        }
-
-        // Update prev image for next iteration
-        prev_image = image.clone();
-
         // Handle keyboard input
         while (true) {
             int key = cv::waitKey(paused ? 100 : frame_delay);
@@ -237,9 +193,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // NEW: Save screenshots after processing ends (as long as Pangolin is open)
-    // -------------------------------------------------------------------------
+    //  Save screenshots after processing ends (as long as Pangolin is open)
     {
         const std::string out_dir = dataset_path + "/trajectory_screenshots";
         if (!viewer.should_quit()) {

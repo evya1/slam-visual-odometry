@@ -11,12 +11,9 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include <thread>
-#include <mutex>
 #include <chrono>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/features2d.hpp>
 #include <pangolin/pangolin.h>
 
 #include "frame.h"
@@ -25,21 +22,17 @@
 
 namespace fs = std::filesystem;
 
-// =============================================================================
-// Utility Functions
-// =============================================================================
-
-// Load image paths from dataset directory (sorted lexicographically)
-std::vector<std::string> load_image_paths(const std::string& dataset_path) {
+// Load image paths from dataset directory
+std::vector<std::string> load_image_paths(const std::string &dataset_path) {
     std::vector<std::string> image_paths;
 
-    for (const auto& entry : fs::directory_iterator(dataset_path)) {
+    for (const auto &entry: fs::directory_iterator(dataset_path)) {
         if (entry.is_regular_file()) {
             std::string path = entry.path().string();
             std::string ext = entry.path().extension().string();
 
             // Convert extension to lowercase for comparison
-            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            std::transform(ext.begin(), ext.end(), ext.begin(), tolower);
 
             if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
                 image_paths.push_back(path);
@@ -55,10 +48,7 @@ std::vector<std::string> load_image_paths(const std::string& dataset_path) {
     return image_paths;
 }
 
-// =============================================================================
-// Main Function
-// =============================================================================
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "  Epipolar Visual Odometry - NAV HW2   " << std::endl;
     std::cout << "========================================" << std::endl;
@@ -74,7 +64,7 @@ int main(int argc, char** argv) {
             "Dataset_VO"
         };
 
-        for (const auto& c : candidates) {
+        for (const auto &c: candidates) {
             if (std::filesystem::exists(c) && std::filesystem::is_directory(c)) {
                 dataset_path = c;
                 break;
@@ -84,13 +74,13 @@ int main(int argc, char** argv) {
 
     if (dataset_path.empty()) {
         std::cerr
-            << "Dataset directory not found.\n"
-            << "Expected one of:\n"
-            << "  - data/Dataset_VO (recommended)\n"
-            << "  - Dataset_VO\n\n"
-            << "Run with an explicit path, e.g.:\n"
-            << "  ./build/slam_vo_run data/Dataset_VO\n"
-            << "  ./build/slam_vo_run /workspace/data/Dataset_VO   (inside Docker)\n";
+                << "Dataset directory not found.\n"
+                << "Expected one of:\n"
+                << "  - data/Dataset_VO (recommended)\n"
+                << "  - Dataset_VO\n\n"
+                << "Run with an explicit path, e.g.:\n"
+                << "  ./build/slam_vo_run data/Dataset_VO\n"
+                << "  ./build/slam_vo_run /workspace/data/Dataset_VO   (inside Docker)\n";
         return -1;
     }
 
@@ -122,11 +112,8 @@ int main(int argc, char** argv) {
     TrajectoryViewer viewer;
     viewer.init();
 
-
     // Create OpenCV windows once
-    // cv::namedWindow("Visual Odometry: Frame", cv::WINDOW_NORMAL);
     cv::namedWindow("Visual Odometry: Keypoints", cv::WINDOW_NORMAL);
-    // cv::moveWindow("Visual Odometry: Frame", 50, 50);
     cv::moveWindow("Visual Odometry: Keypoints", 50, 500);
     cv::waitKey(1); // optional: forces window creation
 
@@ -135,7 +122,8 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
 
     bool paused = false;
-    int frame_delay = 30;  // ms between frames
+    int frame_delay = 30; // ms between frames
+
 
     for (size_t i = 0; i < image_paths.size(); ++i) {
         // Check if viewer is still running
@@ -167,23 +155,24 @@ int main(int argc, char** argv) {
         cv::Mat display_image = vo.process_frame(frame);
 
         // Update trajectory viewer
-        viewer.render_step(vo.get_trajectory());
+        viewer.render_step(vo.get_trajectory_poses());
 
         // Display images
-        // cv::imshow("Visual Odometry: Frame", image);
         cv::imshow("Visual Odometry: Keypoints", display_image);
 
         // Handle keyboard input
         while (true) {
             int key = cv::waitKey(paused ? 100 : frame_delay);
 
-            if (key == 'q' || key == 'Q' || key == 27) {  // q, Q, or ESC
+            if (key == 'q' || key == 'Q' || key == 27) {
+                // q, Q, or ESC
                 std::cout << "\nQuitting..." << std::endl;
                 cv::destroyAllWindows();
                 return 0;
             }
 
-            if (key == ' ') {  // SPACE
+            if (key == ' ') {
+                // SPACE
                 paused = !paused;
                 std::cout << (paused ? "Paused" : "Resumed") << std::endl;
             }
@@ -201,6 +190,20 @@ int main(int argc, char** argv) {
             if (!paused) {
                 break;
             }
+        }
+    }
+
+    //  Save screenshots after processing ends (as long as Pangolin is open)
+    {
+        const std::string out_dir = dataset_path + "/trajectory_screenshots";
+        if (!viewer.should_quit()) {
+            const bool ok = viewer.save_trajectory_screenshots(vo.get_trajectory_poses(), out_dir);
+            std::cout << (ok
+                ? ("Saved trajectory screenshots to: " + out_dir)
+                : ("Failed to save trajectory screenshots to: " + out_dir))
+                << std::endl;
+        } else {
+            std::cout << "Viewer already closed; skipping screenshots." << std::endl;
         }
     }
 

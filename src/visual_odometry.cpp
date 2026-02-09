@@ -12,7 +12,7 @@ VisualOdometry::VisualOdometry(int image_width, int image_height) {
     constexpr int kOrbMaxFeatures = 1200;
     constexpr float kOrbPyramidScale = 1.2f;
     constexpr int kOrbPyramidLevels = 8;
-    constexpr int kOrbBorderMarginPx = 31; // edgeThreshold
+    constexpr int kOrbBorderMarginPx = 31; // ORB edgeThreshold
     constexpr int kOrbFirstLevel = 0;
     constexpr int kOrbWtaK = 2;
     constexpr auto kOrbScoreType = cv::ORB::HARRIS_SCORE;
@@ -33,10 +33,10 @@ VisualOdometry::VisualOdometry(int image_width, int image_height) {
 
     matcher_ = cv::BFMatcher::create(cv::NORM_HAMMING, true);
 
-    // Construct simple camera intrinsic matrix from image dimensions
-    // Assuming principal point at image center and focal length ~ image width
-    const double fx = image_width; // focal length in pixels
-    const double fy = image_width; // assuming square pixels
+    // Intrinsics (K) used for calibrated two-view geometry.
+    // NOTE: This is a heuristic placeholder based on image size; replace with real calibration.
+    const double fx = static_cast<double>(image_width); // focal length in pixels (heuristic)
+    const double fy = static_cast<double>(image_width); // assume square pixels (heuristic)
     const double cx = image_width / 2.0;
     const double cy = image_height / 2.0;
 
@@ -79,15 +79,15 @@ void VisualOdometry::print_debugging_statistics(const double min_dist, const dou
 auto VisualOdometry::get_mean_dist_ham(const std::vector<cv::DMatch> &matches) -> double {
     double sum = 0.0;
     for (const auto &m: matches) sum += m.distance;
-
-    const double mean_dist = sum / static_cast<double>(matches.size());
-    return mean_dist;
+    return sum / static_cast<double>(matches.size());
 }
 
 auto VisualOdometry::get_median_dist(std::vector<cv::DMatch> matches) -> double {
-    const std::size_t median_index = matches.size() / 2;
-    const double median_dist = matches[median_index].distance;
-    return median_dist;
+    // Median of distances without fully sorting.
+    const std::size_t mid = matches.size() / 2;
+    std::nth_element(matches.begin(), matches.begin() + static_cast<long>(mid), matches.end(),
+                     [](const cv::DMatch &a, const cv::DMatch &b) { return a.distance < b.distance; });
+    return matches[mid].distance;
 }
 
 std::vector<cv::DMatch> VisualOdometry::get_good_matches_of_features(const Frame &frame1, const Frame &frame2) {
@@ -110,6 +110,7 @@ std::vector<cv::DMatch> VisualOdometry::get_good_matches_of_features(const Frame
 
     const double mean_dist = get_mean_dist_ham(matches);
     const double median_dist = get_median_dist(matches);
+
     const double threshold = std::min(std::max(3.0 * min_dist, 0.7 * median_dist), kMaxHammingThreshold);
 
     print_debugging_statistics(min_dist, max_dist, matches.size(), mean_dist, median_dist, threshold);
@@ -152,58 +153,59 @@ bool VisualOdometry::estimate_relative_pose(
                     << ", trainIdx=" << m.trainIdx << "\n";
             continue;
         }
-        points1.push_back(frame1.keypoints[m.queryIdx].pt);
-        points2.push_back(frame2.keypoints[m.trainIdx].pt);
+        points1.push_back(frame1.keypoints[m.queryIdx].pt); // prev frame
+        points2.push_back(frame2.keypoints[m.trainIdx].pt); // curr frame
     }
 
     cv::Mat inlier_mask;
     cv::Mat E = cv::findEssentialMat(
         points1, points2, camera_matrix_,
-        cv::RANSAC, 0.999, 2.0, inlier_mask);
+        cv::RANSAC, 0.999, 2.0, inlier_mask
+    );
 
     if (E.empty()) {
         std::cerr << "Failed to compute Essential matrix\n";
         return false;
     }
-    std::cout << "Essential matrix: " << E << "\n";
+    std::cout << "Essential matrix:\n" << E << "\n";
 
-    // Convert E to double if needed
+    // Compute F in pixel coordinates: F = K^{-T} E K^{-1}.
     cv::Mat E64;
     E.convertTo(E64, CV_64F);
 
     cv::Mat K64;
     camera_matrix_.convertTo(K64, CV_64F);
-    cv::Mat Kinv = K64.inv();
-    cv::Mat F = Kinv.t() * E64 * Kinv; // F = K^{-T} * E * K^{-1}
+    const cv::Mat Kinv = K64.inv();
 
+    const cv::Mat F = Kinv.t() * E64 * Kinv;
     std::cout << "Fundamental matrix F (pixel coords, OpenCV convention x2^T F x1 = 0):\n"
             << F << "\n";
 
-    cv::Matx33d Fm;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            Fm(r, c) = F.at<double>(r, c);
+    auto mat3x3_to_matx33d = [](const cv::Mat &M) -> cv::Matx33d {
+        cv::Matx33d out;
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c)
+                out(r, c) = M.at<double>(r, c);
+        return out;
+    };
 
-    // Build Fm from current F
-    cv::Matx33d Fm_cur;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            Fm_cur(r, c) = F.at<double>(r, c);
-
-    last_F_ = Fm_cur;
+    const cv::Matx33d F_px = mat3x3_to_matx33d(F);
+    last_F_ = F_px;
     has_last_F_ = true;
 
-    // compute epipolar residual with CURRENT F
+    // Algebraic epipolar residual (unnormalized): |x2^T F x1| over inliers.
     double mean_abs = 0.0;
     int cnt = 0;
     for (size_t i = 0; i < points1.size(); ++i) {
-        if (!inlier_mask.empty() && !inlier_mask.at<uchar>((int) i)) continue;
-        cv::Vec3d x1(points1[i].x, points1[i].y, 1.0);
-        cv::Vec3d x2(points2[i].x, points2[i].y, 1.0);
-        mean_abs += std::abs(x2.dot(Fm_cur * x1));
-        cnt++;
+        if (!inlier_mask.empty() && !inlier_mask.at<uchar>(static_cast<int>(i))) continue;
+        const cv::Vec3d x1(points1[i].x, points1[i].y, 1.0);
+        const cv::Vec3d x2(points2[i].x, points2[i].y, 1.0);
+        mean_abs += std::abs(x2.dot(F_px * x1));
+        ++cnt;
     }
-    if (cnt > 0) std::cout << "Mean |x2^T F x1| over inliers: " << (mean_abs / cnt) << "\n";
+    if (cnt > 0) {
+        std::cout << "Mean |x2^T F x1| over inliers: " << (mean_abs / cnt) << "\n";
+    }
 
     const int inlier_count = cv::countNonZero(inlier_mask);
     std::cout << "Essential matrix computed with " << inlier_count << " inliers\n";
@@ -223,8 +225,6 @@ bool VisualOdometry::estimate_relative_pose(
     return true;
 }
 
-
-// Keypoint visualization
 cv::Mat render_current_frame_with_keypoints_overlay(const Frame &frame) {
     cv::Mat display_image;
     cv::drawKeypoints(
@@ -234,7 +234,6 @@ cv::Mat render_current_frame_with_keypoints_overlay(const Frame &frame) {
     return display_image;
 }
 
-// Invert relative camera motion
 void invert_relative_camera_to_camera_transform(
     const cv::Mat &R_c2_c1,
     const cv::Mat &t_c2_c1,
@@ -246,7 +245,6 @@ void invert_relative_camera_to_camera_transform(
     t_c1_c2 = -R_c2_c1.t() * t_c2_c1;
 }
 
-// Compose camera->world pose
 Pose compose_next_camera_to_world_pose_from_inverse_relative_motion(
     const Pose &prev_pose, // T_w_c1
     const cv::Mat &R_c1_c2, // inverse relative rotation
@@ -255,67 +253,58 @@ Pose compose_next_camera_to_world_pose_from_inverse_relative_motion(
 ) {
     Pose out;
     // T_w_c2 = T_w_c1 * T_c1_c2
-    out.R = prev_pose.R * R_c1_c2;
-    out.t_vec = prev_pose.t_vec + scale * (prev_pose.R * t_c1_c2);
+    out.R_wc = prev_pose.R_wc * R_c1_c2;
+    out.t_vec = prev_pose.t_vec + scale * (prev_pose.R_wc * t_c1_c2);
     return out;
 }
 
 void print_camera_position_debug(const Pose &pose) {
-    const cv::Mat pos = pose.get_position(); // for T_w_c: should be t_vec
+    // With T_wc convention, camera center in world coordinates is C_w = t_wc.
+    const cv::Mat pos = pose.get_position();
     std::cout << "Position: [" << pos.at<double>(0) << ", "
             << pos.at<double>(1) << ", "
             << pos.at<double>(2) << "]\n";
 }
-
 
 cv::Mat VisualOdometry::process_frame(Frame &frame) {
     detect_features(frame);
     const cv::Mat display_image = render_current_frame_with_keypoints_overlay(frame);
 
     if (!initialized_) {
-        // First-frame initialization
-        frame.pose = Pose(); // R = I, t = 0
+        frame.pose = Pose(); // R_wc = I, t_wc = 0
         {
             std::lock_guard<std::mutex> lock(trajectory_mutex_);
             trajectory_positions_.push_back(frame.pose.get_position().clone());
-            trajectory_poses_.emplace_back(frame.pose.R.clone(), frame.pose.t_vec.clone());
+            trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_vec.clone());
         }
         previous_frame_ = std::move(frame);
         initialized_ = true;
         return display_image;
     }
 
-    // Failure-safe pose default
+    // Default to last known pose if the current update fails.
     frame.pose = previous_frame_.pose;
 
-    const std::vector<cv::DMatch> matches =
-            get_good_matches_of_features(previous_frame_, frame);
+    const std::vector<cv::DMatch> matches = get_good_matches_of_features(previous_frame_, frame);
 
     constexpr std::size_t kMinMatchesForPose = 10;
-
     if (matches.size() >= kMinMatchesForPose) {
         cv::Mat R_c2_c1, t_c2_c1;
 
-        // NOTE: we call it once, and use BOTH the return value and the produced R,t.
-        const bool pose_ok =
-                estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1);
+        const bool pose_ok = estimate_relative_pose(previous_frame_, frame, matches, R_c2_c1, t_c2_c1);
 
-        // Even if pose_ok == false (e.g. low cheirality / low valid points),
-        // we still apply ROTATION-ONLY if we got a usable R,t.
+        // If pose_ok is false, we still apply rotation-only (translation scale set to 0).
         if (!R_c2_c1.empty() && !t_c2_c1.empty()) {
             constexpr double kScaleGood = 0.3;
-            const double scale = pose_ok ? kScaleGood : 0.0; // rotation-only when not ok
+            const double scale = pose_ok ? kScaleGood : 0.0;
 
             cv::Mat R_c1_c2, t_c1_c2;
-            invert_relative_camera_to_camera_transform(
-                R_c2_c1, t_c2_c1, R_c1_c2, t_c1_c2
-            );
+            invert_relative_camera_to_camera_transform(R_c2_c1, t_c2_c1, R_c1_c2, t_c1_c2);
 
             frame.pose = compose_next_camera_to_world_pose_from_inverse_relative_motion(
                 previous_frame_.pose, R_c1_c2, t_c1_c2, scale
             );
 
-            // Optional debug:
             std::cout << "[PoseUpdate] matches=" << matches.size()
                     << " pose_ok=" << pose_ok
                     << " scale=" << scale << "\n";
@@ -324,17 +313,15 @@ cv::Mat VisualOdometry::process_frame(Frame &frame) {
 
     print_camera_position_debug(frame.pose);
 
-    // Append trajectory every frame (even if pose didn't update)
     {
         std::lock_guard<std::mutex> lock(trajectory_mutex_);
         trajectory_positions_.push_back(frame.pose.get_position().clone());
-        trajectory_poses_.emplace_back(frame.pose.R.clone(), frame.pose.t_vec.clone());
+        trajectory_poses_.emplace_back(frame.pose.R_wc.clone(), frame.pose.t_vec.clone());
     }
 
     previous_frame_ = std::move(frame);
     return display_image;
 }
-
 
 std::vector<cv::Mat> VisualOdometry::get_trajectory() {
     std::lock_guard<std::mutex> lock(trajectory_mutex_);
@@ -345,4 +332,8 @@ std::vector<Pose> VisualOdometry::get_trajectory_poses() {
     std::lock_guard<std::mutex> lock(trajectory_mutex_);
     return trajectory_poses_;
 }
+
+// If visual_odometry.h declares these as out-of-line methods, define them here.
+auto VisualOdometry::has_last_F() const -> bool { return has_last_F_; }
+auto VisualOdometry::last_F() const -> cv::Matx33d { return last_F_; }
 

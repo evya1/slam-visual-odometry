@@ -5,7 +5,16 @@
 #include "pose.h"
 
 /**
- * Frame Class - Represents a single image in the sequence
+ * @class Frame
+ * @brief One time-step in the VO pipeline: image + features + pose estimate.
+ *
+ * - keypoints[i].pt is a 2D pixel coordinate (OpenCV 0-based), used as
+ *   x = [u, v, 1]^T in MVG notation (see geometry_conventions.h).
+ * - descriptors correspond 1:1 with keypoints (ORB/Hamming).
+ * - pose is the estimated camera->world pose T_wc for this frame.
+ *
+ * @see geometry_conventions.h
+ * @see MVG2e Ch. 9–10 for two-view geometry interpretation of correspondences.
  */
 class Frame {
 public:

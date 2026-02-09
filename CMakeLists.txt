@@ -86,6 +86,7 @@ if(SLAM_VO_REQUIRE_DEPS OR _DEPS_OK)
           src/trajectory_viewer.cpp
           src/visual_odometry.cpp
           src/epipolar_viewer.h
+          src/geometry_conventions.h
   )
   target_link_libraries(slam_vo_run PRIVATE slam_vo)
 else()

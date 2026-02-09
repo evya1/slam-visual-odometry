@@ -14,6 +14,7 @@ public:
     static bool should_quit();
 
     void render_step(const std::vector<Pose> &trajectory);
+    static void draw_camera_frustum_at_pose(const Pose &pose, float scale);
 
 private:
     bool initialized_ = false;

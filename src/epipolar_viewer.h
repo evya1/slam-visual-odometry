@@ -1,8 +1,4 @@
 #pragma once
-/**
- * @file epipolar_viewer.h
- * @brief Interactive epipolar-geometry viewer
- */
 
 #include <opencv2/opencv.hpp>
 #include <optional>
@@ -13,6 +9,29 @@
 #include <string>
 #include <stdexcept>
 
+/**
+ * @file epipolar_viewer.h
+ * @brief Interactive epipolar-geometry viewer for two images.
+ *
+ * Epipolar geometry (MVG2e §9.2):
+ *   Standard form: x2^T F x1 = 0, with l2 = F x1 and l1 = F^T x2.
+ *
+ * IMPORTANT (this viewer's convention):
+ *   This implementation follows the MATLAB vgg_gui_F ordering:
+ *     p1^T F p2 = 0
+ *   where p1 is in the LEFT image and p2 in the RIGHT image.
+ *   Therefore:
+ *     - If you click p1 (LEFT), the epipolar line in RIGHT is l2 = F^T p1.
+ *     - If you click p2 (RIGHT), the epipolar line in LEFT  is l1 = F p2.
+ *
+ * 0-based vs 1-based pixels:
+ *   OpenCV mouse coordinates are 0-based; MATLAB is typically 1-based.
+ *   We convert using x_1based = T x_0based with T = [[1,0,1],[0,1,1],[0,0,1]] and
+ *   F transforms as F' = T^{-T} F T^{-1}.
+ *
+ * @see geometry_conventions.h
+ * @see MVG2e Ch. 9 (F/E) and Ch. 11 (normalization, residuals).
+ */
 class EpipolarViewer {
 public:
     EpipolarViewer(cv::Mat left, cv::Mat right, const cv::Matx33d &F_1based,
